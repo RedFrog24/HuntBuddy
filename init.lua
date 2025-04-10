@@ -1,7 +1,7 @@
 -- huntbuddy.lua
 -- Created by: RedFrog
 -- Original creation date: 03/23/2024
--- Version: 2.2
+-- Version: 2.2.1
 -- Thank you to Grimmier for assistance and his themes
 -- ToDo List: add zones by server, EMU server, and TLP for Live
 -- Add Keyed filter, add 'key' Column
@@ -127,7 +127,7 @@ local function DrawZoneSelector()
     local success, err = pcall(function()
         local ColorCount, StyleCount = Themes.StartTheme(currentTheme, ThemeData)
 
-        local isOpen = ImGui.Begin("HuntBuddy", true)
+        local isOpen = ImGui.Begin("HuntBuddy 2.2.1", true)
         if not isOpen then 
             ImGui.End()
             Themes.EndTheme(ColorCount, StyleCount)
