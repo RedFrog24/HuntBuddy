@@ -1,7 +1,9 @@
 -- huntbuddy.lua
 -- Created by: RedFrog
 -- Original creation date: 03/23/2024
--- Version: 2.2.1
+-- Version: 2.3.28
+-- Stable Baseline: Version 2.3.26 (Stars/Coins as transparent buttons, fully functional)
+-- Version 2.3.27: Increased table height to 600px, updated headers with icons
 -- Thank you to Grimmier for assistance and his themes
 -- ToDo List: add zones by server, EMU server, and TLP for Live
 -- Add Keyed filter, add 'key' Column
@@ -13,6 +15,20 @@ local Icons = require('mq.ICONS')
 local Themes = require('huntbuddy.theme_loader')
 local ThemeData = require('huntbuddy.themes')
 local zones = require('huntbuddy.zones') -- Zones, expansionOrder, and expansionList from here
+
+-- Center icon in table header cell
+local function centerIconInCell(icon, tooltipText)
+    local cellWidth = ImGui.GetContentRegionAvailVec().x
+    local textWidth = ImGui.CalcTextSize(icon)
+    local cursorX = ImGui.GetCursorPosX()
+    ImGui.SetCursorPosX(cursorX + (cellWidth - textWidth) * 0.5)
+    ImGui.Text(icon)
+    if ImGui.IsItemHovered() then
+        ImGui.BeginTooltip()
+        ImGui.Text(tooltipText)
+        ImGui.EndTooltip()
+    end
+end
 
 -- State variables
 local filterName = ""
@@ -34,6 +50,7 @@ local ColumnID_LevelRange = 1
 local ColumnID_ZEM = 2
 local ColumnID_Hotzone = 3
 local ColumnID_Favorites = 4
+local ColumnID_Platinum = 5
 
 -- Settings file path
 local settingsFile = mq.TLO.MacroQuest.Path() .. "\\HuntBuddySettings.ini"
@@ -49,20 +66,24 @@ local function LoadSettings()
             end
         end
     end
-    -- Load favorites
+    -- Load favorites and platinum
     for _, zone in ipairs(zones.zones) do
-        local isFavorite = mq.TLO.Ini(settingsFile, "Favorites", zone.shortName)
-        zone.isFavorite = (isFavorite() == "1")
+        local isFavorite = mq.TLO.Ini(settingsFile, "Favorites", zone.shortName)()
+        local isPlatinum = mq.TLO.Ini(settingsFile, "Platinum", zone.shortName)()
+        zone.isFavorite = (isFavorite == "1")
+        zone.isPlatinum = (isPlatinum == "1")
     end
 end
 
--- Save settings
-local function SaveSettings()
+-- Save settings for a single zone
+local function SaveZoneSettings(zone)
+    mq.cmdf('/ini "%s" "Favorites" "%s" "%d"', settingsFile, zone.shortName, zone.isFavorite and 1 or 0)
+    mq.cmdf('/ini "%s" "Platinum" "%s" "%d"', settingsFile, zone.shortName, zone.isPlatinum and 1 or 0)
+end
+
+-- Save theme setting
+local function SaveThemeSetting()
     mq.cmdf('/ini "%s" "Settings" "Theme" "%s"', settingsFile, currentTheme)
-    -- Save favorites
-    for _, zone in ipairs(zones.zones) do
-        mq.cmdf('/ini "%s" "Favorites" "%s" "%d"', settingsFile, zone.shortName, zone.isFavorite and 1 or 0)
-    end
 end
 
 -- Reset filters function
@@ -101,6 +122,8 @@ local function CompareWithSortSpecs(a, b)
             delta = (a.isHotzone and 1 or 0) - (b.isHotzone and 1 or 0)
         elseif sortSpec.ColumnUserID == ColumnID_Favorites then
             delta = (a.isFavorite and 1 or 0) - (b.isFavorite and 1 or 0)
+        elseif sortSpec.ColumnUserID == ColumnID_Platinum then
+            delta = (a.isPlatinum and 1 or 0) - (b.isPlatinum and 1 or 0)
         end
         if delta ~= 0 then
             if sortSpec.SortDirection == ImGuiSortDirection.Ascending then return delta < 0 end
@@ -126,12 +149,13 @@ local function DrawZoneSelector()
     
     local success, err = pcall(function()
         local ColorCount, StyleCount = Themes.StartTheme(currentTheme, ThemeData)
-
-        local isOpen = ImGui.Begin("HuntBuddy 2.2.1", true)
+        -- Set initial window size (width, height)
+        ImGui.SetNextWindowSize(ImVec2(600, 400), ImGuiCond.FirstUseEver)
+        local isOpen = ImGui.Begin("HuntBuddy 2.3.28", true)
+        openGUI = isOpen
         if not isOpen then 
             ImGui.End()
             Themes.EndTheme(ColorCount, StyleCount)
-            openGUI = false
             return 
         end
 
@@ -143,7 +167,7 @@ local function DrawZoneSelector()
                 local isSelected = (themeName == currentTheme)
                 if ImGui.Selectable(themeName, isSelected) then
                     currentTheme = themeName
-                    SaveSettings()
+                    SaveThemeSetting()
                 end
                 if isSelected then ImGui.SetItemDefaultFocus() end
             end
@@ -290,83 +314,107 @@ local function DrawZoneSelector()
             ImGui.EndTooltip()
         end
 
-        ImGui.BeginChild("ZoneTableChild", ImVec2(0, 300), true)
-        if ImGui.BeginTable("ZoneTable", 5, ImGuiTableFlags.Sortable + ImGuiTableFlags.Resizable + ImGuiTableFlags.Borders) then
-            ImGui.TableSetupColumn("Zone Name", ImGuiTableColumnFlags.DefaultSort, 300.0, ColumnID_Name) -- Even wider
-            ImGui.TableSetupColumn("Level Range", ImGuiTableColumnFlags.DefaultSort, 0.0, ColumnID_LevelRange)
-            ImGui.TableSetupColumn("ZEM", ImGuiTableColumnFlags.DefaultSort, 0.0, ColumnID_ZEM)
-            ImGui.TableSetupColumn(Icons.FA_FIRE, ImGuiTableColumnFlags.DefaultSort, 20.0, ColumnID_Hotzone) -- Even smaller
-            ImGui.TableSetupColumn(Icons.FA_STAR, ImGuiTableColumnFlags.DefaultSort, 20.0, ColumnID_Favorites) -- Even smaller
-            ImGui.TableHeadersRow()
+        -- Table rendering
+        ImGui.BeginChild("ZoneTableChild", ImVec2(-1, 600), true)
+        local tableSuccess, tableErr = pcall(function()
+            if ImGui.BeginTable("ZoneTable", 6, ImGuiTableFlags.Sortable + ImGuiTableFlags.Resizable + ImGuiTableFlags.Borders + ImGuiTableFlags.ScrollX) then
+                ImGui.TableSetupColumn("Zone Name", ImGuiTableColumnFlags.WidthStretch, 1.0, ColumnID_Name)
+                ImGui.TableSetupColumn("Level Range", ImGuiTableColumnFlags.WidthFixed, 100.0, ColumnID_LevelRange)
+                ImGui.TableSetupColumn("ZEM", ImGuiTableColumnFlags.WidthFixed, 100.0, ColumnID_ZEM)
+                ImGui.TableSetupColumn("##Hotzone", ImGuiTableColumnFlags.WidthFixed, 30.0, ColumnID_Hotzone)
+                ImGui.TableSetupColumn("##Favorites", ImGuiTableColumnFlags.WidthFixed, 30.0, ColumnID_Favorites)
+                ImGui.TableSetupColumn("##Platinum", ImGuiTableColumnFlags.WidthFixed, 30.0, ColumnID_Platinum)
+                
+                ImGui.TableNextRow(ImGuiTableRowFlags.Headers)
+                
+                -- Column 1: Zone Name
+                ImGui.TableSetColumnIndex(ColumnID_Name)
+                ImGui.TableHeader("Zone Name")
+                
+                -- Column 2: Level Range
+                ImGui.TableSetColumnIndex(ColumnID_LevelRange)
+                ImGui.TableHeader("Level Range")
+                
+                -- Column 3: ZEM
+                ImGui.TableSetColumnIndex(ColumnID_ZEM)
+                ImGui.TableHeader("ZEM")
+                
+                -- Column 4: Fire Icon (Hotzones)
+                ImGui.TableSetColumnIndex(ColumnID_Hotzone)
+                centerIconInCell(Icons.FA_FIRE, "Hotzones")
+                
+                -- Column 5: Star Icon (Favorites)
+                ImGui.TableSetColumnIndex(ColumnID_Favorites)
+                centerIconInCell(Icons.FA_STAR, "Favorites")
+                
+                -- Column 6: Database Icon (Platinum)
+                ImGui.TableSetColumnIndex(ColumnID_Platinum)
+                centerIconInCell(Icons.FA_DATABASE, "Platinum")
 
-            -- Hotzone column tooltip
-            ImGui.TableSetColumnIndex(ColumnID_Hotzone)
-            if ImGui.IsItemHovered() then
-                ImGui.BeginTooltip()
-                ImGui.Text("Hotzone")
-                ImGui.EndTooltip()
-            end
+                local sortSpecs = ImGui.TableGetSortSpecs()
+                if sortSpecs and sortSpecs.SpecsDirty then
+                    currentSortSpecs = sortSpecs
+                    table.sort(zones.zones, CompareWithSortSpecs)
+                    currentSortSpecs = nil
+                    sortSpecs.SpecsDirty = false
+                end
 
-            -- Favorites column tooltip
-            ImGui.TableSetColumnIndex(ColumnID_Favorites)
-            if ImGui.IsItemHovered() then
-                ImGui.BeginTooltip()
-                ImGui.Text("Favorites")
-                ImGui.EndTooltip()
-            end
+                for _, zone in ipairs(zones.zones) do
+                    local zoneExpansionLevel = zones.expansionOrder[zone.expansion]
+                    if zoneExpansionLevel <= maxExpansionLevel then
+                        local displayName = useShortNames and zone.shortName or zone.fullName
+                        local zemValue = isLiveMode and zone.zem.live or zone.zem.emu
+                        local nameMatch = filterName == "" or string.find(string.lower(displayName), string.lower(filterName))
+                        local zemMatch = (zemValue == "--" and filterZemMin <= 0) or (zemValue ~= "--" and zemValue >= filterZemMin and zemValue <= filterZemMax)
+                        local levelMatch = (zone.levelMin <= filterLevelMax) and (zone.levelMax >= filterLevelMin)
+                        local hotzoneMatch = not showHotzonesOnly or zone.isHotzone
+                        local cityMatch = not removeCities or not zone.isCity
 
-            local sortSpecs = ImGui.TableGetSortSpecs()
-            if sortSpecs and sortSpecs.SpecsDirty then
-                currentSortSpecs = sortSpecs
-                table.sort(zones.zones, CompareWithSortSpecs)
-                currentSortSpecs = nil
-                sortSpecs.SpecsDirty = false
-            end
-
-            for _, zone in ipairs(zones.zones) do
-                local zoneExpansionLevel = zones.expansionOrder[zone.expansion]
-                if zoneExpansionLevel <= maxExpansionLevel then
-                    local displayName = useShortNames and zone.shortName or zone.fullName
-                    local zemValue = isLiveMode and zone.zem.live or zone.zem.emu
-                    local nameMatch = filterName == "" or string.find(string.lower(displayName), string.lower(filterName))
-                    local zemMatch = (zemValue == "--" and filterZemMin <= 0) or (zemValue ~= "--" and zemValue >= filterZemMin and zemValue <= filterZemMax)
-                    local levelMatch = (zone.levelMin <= filterLevelMax) and (zone.levelMax >= filterLevelMin)
-                    local hotzoneMatch = not showHotzonesOnly or zone.isHotzone
-                    local cityMatch = not removeCities or not zone.isCity
-
-                    if nameMatch and zemMatch and levelMatch and hotzoneMatch and cityMatch then
-                        ImGui.TableNextRow()
-                        ImGui.TableNextColumn()
-                        if ImGui.Selectable(displayName, false, ImGuiSelectableFlags.SpanAllColumns) then
-                            zone.isFavorite = not zone.isFavorite
-                            SaveSettings()
-                            mq.cmdf("/echo %s %s as favorite", zone.shortName, zone.isFavorite and "marked" or "unmarked")
-                        end
-                        ImGui.TableNextColumn()
-                        ImGui.Text("%d-%d", zone.levelMin, zone.levelMax)
-                        ImGui.TableNextColumn()
-                        ImGui.Text(tostring(zemValue))
-                        ImGui.TableNextColumn()
-                        if zone.isHotzone then
-                            ImGui.TextColored(ImVec4(1.0, 0.5, 0.0, 1.0), Icons.FA_FIRE)
-                        else
-                            ImGui.Text(" ")
-                        end
-                        ImGui.TableNextColumn()
-                        if zone.isFavorite then
-                            ImGui.TextColored(ImVec4(1.0, 1.0, 0.0, 1.0), Icons.FA_STAR)
-                        else
-                            ImGui.Text(" ")
+                        if nameMatch and zemMatch and levelMatch and hotzoneMatch and cityMatch then
+                            ImGui.TableNextRow()
+                            ImGui.TableNextColumn()
+                            ImGui.Text(displayName)
+                            ImGui.TableNextColumn()
+                            ImGui.Text("%d-%d", zone.levelMin, zone.levelMax)
+                            ImGui.TableNextColumn()
+                            ImGui.Text(tostring(zemValue))
+                            ImGui.TableNextColumn()
+                            if zone.isHotzone then
+                                ImGui.TextColored(ImVec4(1.0, 0.5, 0.0, 1.0), Icons.FA_FIRE)
+                            else
+                                ImGui.Text(" ")
+                            end
+                            ImGui.TableNextColumn()
+                            ImGui.PushStyleColor(ImGuiCol.Button, ImVec4(0, 0, 0, 0))
+                            ImGui.PushStyleColor(ImGuiCol.Text, ImVec4(1.0, 1.0, 0.0, 1.0))
+                            ImGui.PushID("Fav_" .. zone.shortName)
+                            if ImGui.Button(zone.isFavorite and Icons.FA_STAR or " ", ImVec2(30, 20)) then
+                                zone.isFavorite = not zone.isFavorite
+                                SaveZoneSettings(zone)
+                            end
+                            ImGui.PopID()
+                            ImGui.PopStyleColor()
+                            ImGui.TableNextColumn()
+                            ImGui.PushID("Plat_" .. zone.shortName)
+                            ImGui.PushStyleColor(ImGuiCol.Text, ImVec4(1.0, 0.84, 0.0, 1.0))
+                            if ImGui.Button(zone.isPlatinum and Icons.FA_DATABASE or " ", ImVec2(30, 20)) then
+                                zone.isPlatinum = not zone.isPlatinum
+                                SaveZoneSettings(zone)
+                            end
+                            ImGui.PopID()
+                            ImGui.PopStyleColor(2)
                         end
                     end
                 end
+                ImGui.EndTable()
             end
-            ImGui.EndTable()
-        end
+        end)
         ImGui.EndChild()
-
         ImGui.End()
         Themes.EndTheme(ColorCount, StyleCount)
+        if not tableSuccess then
+            mq.cmdf("/echo Table rendering failed: %s", tostring(tableErr))
+        end
     end)
     if not success then
         mq.cmdf("/echo ImGui Error: %s", tostring(err))
@@ -376,6 +424,7 @@ end
 -- Main loop
 local function main()
     LoadSettings()
+    mq.cmdf("/echo HuntBuddy 2.3.28 loaded successfully")
     mq.imgui.init("HuntBuddy", DrawZoneSelector)
     while openGUI do
         mq.delay(100)
