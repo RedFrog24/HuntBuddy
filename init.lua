@@ -1,8 +1,9 @@
 -- huntbuddy.lua
 -- Created by: RedFrog
 -- Original creation date: 03/23/2024
--- Version: 2.3.86
+-- Version: 2.3.87
 -- Changelog:
+-- Version 2.3.87: Fixed Platinum button Push/PopStyleColor mismatch on toggle (always push Text color, conditional value)
 -- 2.3.86: Fixed EMU/Lazarus expansion caps & duplicate version logic:
 --         - EMU shows up to DoN, Lazarus up to OoW, Live shows all.
 --         - For dupes: EMU/Lazarus prefer classic; Live prefers live.
@@ -310,7 +311,7 @@ local function DrawZoneSelector()
 
     local ColorCount, StyleCount = Themes.StartTheme(currentTheme, ThemeData)
     ImGui.SetNextWindowSize(ImVec2(600, 800), ImGuiCond.FirstUseEver)
-    local isOpen, shouldDraw = ImGui.Begin("HuntBuddy 2.3.86", true, ImGuiWindowFlags.NoResize + ImGuiWindowFlags.NoScrollbar)
+    local isOpen, shouldDraw = ImGui.Begin("HuntBuddy 2.3.87", true, ImGuiWindowFlags.NoResize + ImGuiWindowFlags.NoScrollbar)
     openGUI = isOpen
 
     if not shouldDraw then
@@ -616,13 +617,14 @@ local function DrawZoneSelector()
             ImGui.PushStyleColor(ImGuiCol.Button,        ImVec4(0, 0, 0, 0))
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ImVec4(0, 0, 0, 0))
             ImGui.PushStyleColor(ImGuiCol.ButtonActive,  ImVec4(0, 0, 0, 0))
-            if zone.isPlatinum then ImGui.PushStyleColor(ImGuiCol.Text, ImVec4(1.0, 0.84, 0.0, 1.0)) end
+            local wasPlatinum = zone.isPlatinum  -- Capture state before potential toggle
+            if wasPlatinum then ImGui.PushStyleColor(ImGuiCol.Text, ImVec4(1.0, 0.84, 0.0, 1.0)) end
             centerNextItemInCell(30)
-            if ImGui.Button(zone.isPlatinum and Icons.FA_DATABASE or " ", ImVec2(30, 20)) then
+            if ImGui.Button(wasPlatinum and Icons.FA_DATABASE or " ", ImVec2(30, 20)) then
                 zone.isPlatinum = not zone.isPlatinum
                 SaveZoneSettings(zone)
             end
-            if zone.isPlatinum then ImGui.PopStyleColor() end
+            if wasPlatinum then ImGui.PopStyleColor() end
             ImGui.PopStyleColor(3)
             ImGui.PopID()
         end
