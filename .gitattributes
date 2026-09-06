@@ -1,0 +1,7 @@
+# Keep everything users don't need out of the release zip (git archive honors export-ignore).
+# Users get exactly: huntbuddy/init.lua + huntbuddy/zones.lua - no assets, this script has none.
+# README.md stays TRACKED (it syncs to the RG resource Overview on each release) but does not ship.
+.github export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore
+README.md export-ignore

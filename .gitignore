@@ -1,0 +1,11 @@
+# Local-only working files - never ship
+backup/
+design/
+docs/
+
+# Dev-only release gate
+validate_zones.lua
+
+# Build artifacts and the retired zone table
+luac.out
+zones2.lua

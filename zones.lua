@@ -1,658 +1,851 @@
 -- zones.lua
 -- Created by: RedFrog
 -- Original creation date: 03/23/2024
--- Version: 1.1.2
--- Description: Zone data for HuntBuddy, including zone names, levels, ZEMs, and flags
-
+-- Version controlled by `zones.dataVersion` below (single source of truth - shown in the Help tab).
+--
+-- REBUILT FROM SCRATCH. The old hand-curated table is kept beside this one as zones2.lua, reference
+-- only, not loaded. An audit found 240 of its 563 rows flagged hotzone against ~50 real ones, level
+-- ranges contradicting the game (Velketor's Labyrinth 90-110 against an actual 45-55), and 79
+-- invented zone ids. Nothing is copied from it.
+--
+-- WHERE EACH FIELD COMES FROM - every value here is sourced, none are guessed
+--   short / name / expansion  MacroQuest's own resources/Zones.ini. Canonical and matched to the
+--                             installed client, so a zone that is not real cannot appear here.
+--   id                        PEQ (ProjectEQ) database, zone.zoneidnumber. Real ids.
+--   zem                       PEQ zone.zone_exp_multiplier. AUTHORITATIVE FOR EMU - see "ZEM" below.
+--   min / max                 DERIVED from the levels of the NPCs actually spawned in the zone
+--                             (PEQ spawn2 -> spawnentry -> npc_types), 25th to 90th percentile so
+--                             one high-level named cannot stretch the range, and ambient fauna
+--                             cannot drag the floor down - Barren Coast is 53% level 5-25 fish and
+--                             sea turtles, which made a level 50-65 zone derive as "11-64". The
+--                             trailing comment
+--                             gives the spawn count it came from. CITY zones use 10th-to-median
+--                             instead, because guards otherwise push a starter city to level 60.
+--                             Invisible script triggers are EXCLUDED (race 127 / bodytype 11,67):
+--                             PEQ spawns them as level-1 NPCs named things like You_trip and
+--                             Trap_control - 16% of Akheva Ruins' rows - which dragged that zone to
+--                             "1-64" instead of its real 47-56. Filtering them fixes the broken
+--                             zones and leaves correct ones untouched.
+--   indoor                    PEQ zone.ztype.
+--   hot                       Franklin Teek's hot zone brackets (published list, Aug 2024). The
+--                             number IS the bracket, so hot=50 means "the level 50 hot zone".
+--   emuOnly                   MEASURED: this client ships no .s3d/.eqg for the zone, so Live cannot
+--                             load it - see "emuOnly" below.
+--   city / cat                `cat` marks a zone that is real but not somewhere you go and hunt, so
+--                             filters can hide it: instance, dev, arena, hub, housing, event,
+--                             unused, city, nodata. `cat="instance"` is derived; the rest are
+--                             curated. `nodata` means PEQ has no spawn rows - a gap in OUR source,
+--                             not proof the zone is empty, which is why the review overrides it
+--                             zone by zone.
+--
+-- cat="instance" - mission/adventure zones you cannot simply travel to. Detected, not hand-listed,
+-- using Explore.mac (Denethor's zone-achievement route in the macros folder), which is a list of
+-- places a player can actually GO. It visits chardok, chardokb AND chardoktwo - three genuinely
+-- separate zones - but skips all six "Muramite Proving Grounds (A-F)" chambers, which are mission
+-- instances of the one real `provinggrounds`. Two rules follow from that:
+--   1. named "X (Y)" where a zone named exactly "X" exists and IS on the route, and this one is not
+--   2. the whole of LDoN, which added no persistent open zones - only instanced adventure dungeons
+--      (all 48 are skipped by the route)
+-- Explore.mac also independently corroborates emuOnly: it skips 32 of 32 zones flagged that way.
+--
+-- emuOnly: when a zone was revamped the client stopped shipping the old files, so "no client file"
+-- is a measurable test for "EMU-era only, not loadable on Live". Verified against the revamp pairs -
+-- commons/ecommons vs commonlands, misty vs mistythicket, sro vs southro, oot vs oceanoftears,
+-- tox vs toxxulia: in every case the classic short name has no client file and the revamp does.
+-- Two genuine exceptions ship BOTH: freporte + freeporteast, and nro + northro. Those are the real
+-- classic/live twins the `version` field and the duplicate-preference logic exist to handle.
+--
+-- ZEM: Daybreak has never published Live ZEM values. The EMU multiplier stands in so the column and
+-- its filter stay useful. Treat it as a relative hint, not a measured Live figure. ZEMs stopped
+-- rotating years ago and now only move for global events, so a static value is reasonable.
+--
+-- MQ's own Zones.ini lists six short names twice, and the DISPLAY NAME is what tells the two cases
+-- apart, so the dedupe key is (short name, display name) - not (short name, expansion):
+--   SAME name    -> one zone listed twice, collapsed, LAST placement kept. crafthalls
+--                   "Ngreth's Den" (since dropped entirely - see below), dragoncrypt "Lair of the
+--                   Fallen" and weddingchapel "Wedding
+--                   Chapel" are all listed under both Base EverQuest and Underfoot; resplendent
+--                   "Resplendent Temple" is listed twice under Veil of Alaris. The later placement
+--                   is the one that matches the level data - Lair of the Fallen derives to 85-85,
+--                   which is Underfoot's band, not Classic's.
+--   DIFFERENT name -> genuinely different zones, both kept. neriakd is "Neriak Palace" in Classic
+--                   and "Neriak - Fourth Gate" in CotF; guildhalllrg is "Palatial Guidhall" and
+--                   "Grand Guild Hall".
+-- Keying on (short, expansion) instead let the three Classic|Underfoot pairs through as two rows
+-- each, and they surfaced in two different expansion reviews before it was caught (2026-09-04).
+--
+-- LDoN ADVENTURES SCALE. All 48 LDoN dungeons show 15-75, which is the adventure band from the
+-- game's own adventure_template table (nine bands: 15-20, 21-26 ... 63-75, 66 templates each) - NOT
+-- a spawn-derived range, which for scaling content only reflects whatever level PEQ happened to
+-- populate a dungeon at. The zone gives you an adventure matched to your level, so any level in
+-- that span is valid. Confirmed against Allakhazam's LDoN page: 48 dungeons, exact match.
+--
+-- PLAYER HOUSING IS AUTO-DROPPED. House interiors reappear every expansion (HoT 8, VoA 12, RoF 1)
+-- and are never hunting zones, so the build tool removes any zone whose name contains "House
+-- Interior" or whose short name starts plh*/phinterior*. Outdoor housing NEIGHBOURHOODS are not
+-- dropped - Sunrise Hills is a real place you can walk around, so it stays, flagged `housing`.
+--
+-- A few zones are DROPPED rather than categorised - see DROP in the build tool. Identity normally
+-- comes from Zones.ini, which is what makes a fake zone impossible, so removing a row is a
+-- deliberate exception and each one carries a reason.
+--
+-- THIS FILE IS MEANT TO BE EDITED. If your server's owner changed a ZEM, or a level range is off,
+-- edit the row - one line per zone, every field named. Nothing here is generated at runtime.
 
 local zones = {}
 
--- Expansion order (numeric value indicates release order)
-zones.expansionOrder = {
-    ["Classic"] = 1, ["RoK"] = 2, ["Velious"] = 3, ["Luclin"] = 4, ["PoP"] = 5,
-    ["LoY"] = 6, ["LDoN"] = 7, ["GoD"] = 8, ["OoW"] = 9, ["DoN"] = 10,
-    ["DoDh"] = 11, ["PoR"] = 12, ["TSS"] = 13, ["TBS"] = 14, ["SoF"] = 15,
-    ["SoD"] = 16, ["UF"] = 17, ["HoT"] = 18, ["VoA"] = 19, ["RoF"] = 20,
-    ["CotF"] = 21, ["TDS"] = 22, ["TBM"] = 23, ["EoK"] = 24, ["RoS"] = 25,
-    ["TBL"] = 26, ["ToV"] = 27, ["CoV"] = 28, ["ToL"] = 29, ["NoS"] = 30,
-    ["LS"] = 31, ["ToB"] = 32, ["Live"] = 999
-}
+zones.dataVersion = "3.16-SoR"
+zones.expansionOrder = { ["Classic"] = 1, ["RoK"] = 2, ["Velious"] = 3, ["Luclin"] = 4, ["PoP"] = 5, ["LoY"] = 6, ["LDoN"] = 7, ["GoD"] = 8, ["OoW"] = 9, ["DoN"] = 10, ["DoDh"] = 11, ["PoR"] = 12, ["TSS"] = 13, ["TBS"] = 14, ["SoF"] = 15, ["SoD"] = 16, ["UF"] = 17, ["HoT"] = 18, ["VoA"] = 19, ["RoF"] = 20, ["CotF"] = 21, ["TDS"] = 22, ["TBM"] = 23, ["EoK"] = 24, ["RoS"] = 25, ["TBL"] = 26, ["ToV"] = 27, ["CoV"] = 28, ["ToL"] = 29, ["NoS"] = 30, ["LS"] = 31, ["TOB"] = 32, ["SoR"] = 33, ["Live"] = 999 }
+zones.expansionList  = { "Classic", "RoK", "Velious", "Luclin", "PoP", "LoY", "LDoN", "GoD", "OoW", "DoN", "DoDh", "PoR", "TSS", "TBS", "SoF", "SoD", "UF", "HoT", "VoA", "RoF", "CotF", "TDS", "TBM", "EoK", "RoS", "TBL", "ToV", "CoV", "ToL", "NoS", "LS", "TOB", "SoR", "Live" }
 
--- List of expansions for dropdown
-zones.expansionList = {
-    "Classic", "RoK", "Velious", "Luclin", "PoP", "LoY", "LDoN", "GoD", "OoW", "DoN",
-    "DoDh", "PoR", "TSS", "TBL", "SoF", "SoD", "UF", "HoT", "VoA", "RoF",
-    "CotF", "TDS", "TBM", "EoK", "RoS", "TBL", "ToV", "CoV", "ToL", "NoS", "LS", "ToB", "Live"
-}
-
--- Zone data
 zones.zones = {}
 
--- Classic zones (Updated for EMU and Live separation)
-table.insert(zones.zones, { fullName = "Ak'Anon", shortName = "akanon", id = 55, zem = { emu = 1.33, live = "--", lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15 for hunting
-table.insert(zones.zones, { fullName = "Aviak Village", shortName = "aviak", id = 53, zem = { emu = 1.00, live = "--", lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 10, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Befallen", shortName = "befallen", id = 36, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "Classic", levelmin = 10, levelmax = 25, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "BlackBurrow", shortName = "blackburrow", id = 17, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "Classic", levelmin = 5, levelmax = 20, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 5
-table.insert(zones.zones, { fullName = "Butcherblock Mountains", shortName = "butcher", id = 68, zem = { emu = 1.00, live = "--", lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Castle Mistmoore", shortName = "mistmoore", id = 59, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "Classic", levelmin = 25, levelmax = 40, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 25
-table.insert(zones.zones, { fullName = "Cazic-Thule", shortName = "cazicthule", id = 48, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "Classic", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 35
-table.insert(zones.zones, { fullName = "Clan Crushbone", shortName = "crushbone", id = 58, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "Classic", levelmin = 5, levelmax = 20, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 5
-table.insert(zones.zones, { fullName = "Clan RunnyEye", shortName = "runnyeye", id = 11, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Commonlands", shortName = "commonlands", id = 408, zem = { emu = 1.00, live = "--", lazarus = 1.00 }, expansion = "Classic", levelmin = 5, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 5
-table.insert(zones.zones, { fullName = "Dagnor's Cauldron", shortName = "cauldron", id = 70, zem = { emu = 1.00, live = "--", lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "East Commonlands", shortName = "ecommons", id = 22, zem = { emu = 1.00, live = "--", lazarus = 1.00 }, expansion = "Classic", levelmin = 5, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 5
-table.insert(zones.zones, { fullName = "East Freeport", shortName = "freporte", id = 10, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "East Freeport", shortName = "freeporteast", id = 382, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "live" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "East Karana", shortName = "eastkarana", id = 15, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 15, levelmax = 35, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Erud's Crossing", shortName = "erudsxing", id = 98, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Erudin", shortName = "erudnext", id = 24, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Erudin Palace", shortName = "erudnint", id = 23, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Estate of Unrest", shortName = "unrest", id = 63, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Everfrost Peaks", shortName = "everfrost", id = 30, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Felwithe", shortName = "felwithea", id = 61, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM, consolidated (A/B)
-table.insert(zones.zones, { fullName = "Freeport Sewers", shortName = "freeportsewers", id = 384, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 5, levelmax = 15, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levels to 5-15, added live ZEM
-table.insert(zones.zones, { fullName = "Gorge of King Xorbb", shortName = "beholder", id = 16, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 20, levelmax = 40, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Grobb", shortName = "grobb", id = 52, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Halas", shortName = "halas", id = 29, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "HighKeep", shortName = "highkeep", id = 6, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 20, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levels to 10-20, ZEM to 1.0
-table.insert(zones.zones, { fullName = "Highpass Hold", shortName = "highpasshold", id = 407, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 15, levelmax = 35, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Highpass Keep", shortName = "highpasskeep", id = 18, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 20, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned ID 18 (placeholder, verify), adjusted levels to 10-20, ZEM to 1.0
-table.insert(zones.zones, { fullName = "Infected Paw", shortName = "paw", id = 18, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 10, levelmax = 25, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 25, added live ZEM
-table.insert(zones.zones, { fullName = "Innothule Swamp", shortName = "innothule", id = 413, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Consolidated (A/B), added live ZEM
-table.insert(zones.zones, { fullName = "Kaladim", shortName = "kaladima", id = 60, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM, consolidated (A/B)
-table.insert(zones.zones, { fullName = "Kedge Keep", shortName = "kedge", id = 64, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 35, added live ZEM
-table.insert(zones.zones, { fullName = "Kerra Isle", shortName = "kerraridge", id = 97, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned ID 97 (placeholder, verify), added live ZEM
-table.insert(zones.zones, { fullName = "Kithicor Forest", shortName = "kithicor", id = 20, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Consolidated (A/B), added live ZEM
-table.insert(zones.zones, { fullName = "Lake Rathetear", shortName = "lakerathe", id = 51, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Lavastorm Mountains", shortName = "lavastorm", id = 27, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Lower Guk", shortName = "gukbottom", id = 66, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 25, levelmax = 45, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levels to 25-45, added live ZEM
-table.insert(zones.zones, { fullName = "Nagafen's Lair", shortName = "soldungb", id = 32, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 35, added live ZEM
-table.insert(zones.zones, { fullName = "Najena", shortName = "najena", id = 44, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 20, levelmax = 35, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 35, added live ZEM
-table.insert(zones.zones, { fullName = "Nektulos Forest", shortName = "nektulos", id = 25, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Neriak Commons", shortName = "neriakb", id = 41, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Neriak Foreign Quarter", shortName = "neriaka", id = 40, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Neriak Palace", shortName = "neriakd", id = 43, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Neriak Third Gate", shortName = "neriakc", id = 42, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "North Freeport", shortName = "freportn", id = 8, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "North Karana", shortName = "northkarana", id = 13, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 15, levelmax = 35, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "North Qeynos", shortName = "qeynos2", id = 2, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "North Ro", shortName = "nro", id = 34, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Consolidated (A/B), added live ZEM
-table.insert(zones.zones, { fullName = "Oasis of Marr", shortName = "oasis", id = 37, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Ocean of Tears", shortName = "oot", id = 69, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Consolidated (oot/oceanoftears), added live ZEM
-table.insert(zones.zones, { fullName = "Oggok", shortName = "oggok", id = 49, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Paineel", shortName = "paineel", id = 75, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Permafrost Keep", shortName = "permafrost", id = 73, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 30, levelmax = 45, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 45, added live ZEM
-table.insert(zones.zones, { fullName = "Plane of Fear", shortName = "fearplane", id = 72, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 50, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 50, added live ZEM
-table.insert(zones.zones, { fullName = "Plane of Sky", shortName = "airplane", id = 71, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 50, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 50, added live ZEM
-table.insert(zones.zones, { fullName = "Qeynos Catacombs", shortName = "qcat", id = 45, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 5, levelmax = 15, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levels to 5-15, added live ZEM
-table.insert(zones.zones, { fullName = "Qeynos Hills", shortName = "qeytoqrg", id = 4, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 10, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Rivervale", shortName = "rivervale", id = 19, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "South Karana", shortName = "southkarana", id = 14, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 15, levelmax = 35, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "South Qeynos", shortName = "qeynos", id = 1, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "South Ro", shortName = "southro", id = 35, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Consolidated (A/B), added live ZEM
-table.insert(zones.zones, { fullName = "Steamfont Mountains", shortName = "steamfont", id = 448, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned ID 448, added live ZEM, removed duplicate
-table.insert(zones.zones, { fullName = "Stonebrunt Mountains", shortName = "stonebrunt", id = 100, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 20, levelmax = 40, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "Surefall Glade", shortName = "qrg", id = 3, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "Temple of Solusek Ro", shortName = "soltemple", id = 80, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "The Feerrott", shortName = "feerrott", id = 47, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "The Greater Faydark", shortName = "gfaydark", id = 54, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "The Lesser Faydark", shortName = "lfaydark", id = 57, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "The Ruins of Old Paineel", shortName = "hole", id = 39, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
-table.insert(zones.zones, { fullName = "The Warrens", shortName = "warrens", id = 101, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 10, levelmax = 25, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 25, ZEM to 1.33, added live ZEM
-table.insert(zones.zones, { fullName = "Toxxulia Forest", shortName = "tox", id = 414, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned ID 414, added live ZEM, removed duplicate
-table.insert(zones.zones, { fullName = "Upper Guk", shortName = "guktop", id = 65, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Classic", levelmin = 10, levelmax = 25, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 25, added live ZEM
-table.insert(zones.zones, { fullName = "West Commonlands", shortName = "commons", id = 21, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 5, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 5, added live ZEM
-table.insert(zones.zones, { fullName = "West Freeport", shortName = "freportw", id = 9, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "West Freeport", shortName = "freeportwest", id = 383, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Classic", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "live" }) -- Adjusted levelmax to 15, added live ZEM
-table.insert(zones.zones, { fullName = "West Karana", shortName = "qey2hh1", id = 12, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Classic", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Added live ZEM
+-- One row per zone. `exp` is set per section below so it is not repeated on every line.
+local exp
+local function add(t)
+    zones.zones[#zones.zones + 1] = {
+        fullName     = t.name,
+        shortName    = t.short,
+        id           = t.id or 0,
+        expansion    = exp,
+        levelmin     = t.min or 0,
+        levelmax     = t.max or 0,
+        zem          = { emu = t.zem or "--", live = t.zem or "--", lazarus = t.zem or "--" },
+        hotzone      = t.hot ~= nil,
+        hotzoneLevel = t.hot,
+        city         = t.city or false,
+        indoor       = t.indoor or false,
+        category     = t.cat,
+        emuOnly      = t.emuOnly or false,
+        isFavorite   = false,
+        isPlatinum   = false,
+        version      = "classic",
+    }
+end
 
--- Ruins of Kunark zones (Updated)
-table.insert(zones.zones, { fullName = "The Field of Bone", shortName = "fieldofbone", id = 78, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 5, levelmax = 25, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levels to 5-25
-table.insert(zones.zones, { fullName = "Warsliks Wood", shortName = "warslikswood", id = 79, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 10, levelmax = 25, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Temple of Droga", shortName = "droga", id = 81, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- ZEM to 1.0 (P99)
-table.insert(zones.zones, { fullName = "West Cabilis", shortName = "cabwest", id = 82, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, ZEM to 1.0 (P99)
-table.insert(zones.zones, { fullName = "Swamp of No Hope", shortName = "swampofnohope", id = 83, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 10, levelmax = 25, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Firiona Vie", shortName = "firiona", id = 84, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 20, levelmax = 35, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Lake of Ill Omen", shortName = "lakeofillomen", id = 85, zem = { emu = 0.80, live = 0.80, lazarus = 0.80 }, expansion = "RoK", levelmin = 5, levelmax = 25, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levels to 5-25
-table.insert(zones.zones, { fullName = "Dreadlands", shortName = "dreadlands", id = 86, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Burning Woods", shortName = "burningwood", id = 87, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Kaesora", shortName = "kaesora", id = 88, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "RoK", levelmin = 30, levelmax = 50, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- ZEM to 1.5 (P99)
-table.insert(zones.zones, { fullName = "Old Sebilis", shortName = "sebilis", id = 89, zem = { emu = 1.30, live = 1.30, lazarus = 1.30 }, expansion = "RoK", levelmin = 45, levelmax = 60, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- ZEM to 1.3 (P99)
-table.insert(zones.zones, { fullName = "City of Mist", shortName = "citymist", id = 90, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- ZEM to 1.0 (P99)
-table.insert(zones.zones, { fullName = "Skyfire Mountains", shortName = "skyfire", id = 91, zem = { emu = 1.06, live = 1.06, lazarus = 1.06 }, expansion = "RoK", levelmin = 40, levelmax = 55, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Frontier Mountains", shortName = "frontiermtns", id = 92, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 25, levelmax = 45, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Overthere", shortName = "overthere", id = 93, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 15, levelmax = 35, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Emerald Jungle", shortName = "emeraldjungle", id = 94, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 30, levelmax = 45, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Trakanon's Teeth", shortName = "trakanon", id = 95, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Timorous Deep", shortName = "timorous", id = 96, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 10, levelmax = 30, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Kurn's Tower", shortName = "kurn", id = 97, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 10, levelmax = 25, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- ZEM to 1.0 (P99)
-table.insert(zones.zones, { fullName = "Karnor's Castle", shortName = "karnor", id = 102, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "RoK", levelmin = 45, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Chardok", shortName = "chardok", id = 103, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "RoK", levelmin = 40, levelmax = 60, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dalnir", shortName = "dalnir", id = 104, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "RoK", levelmin = 25, levelmax = 40, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Howling Stones", shortName = "charasis", id = 105, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "RoK", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "East Cabilis", shortName = "cabeast", id = 106, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15, ZEM to 1.0 (P99)
-table.insert(zones.zones, { fullName = "Mines of Nurga", shortName = "nurga", id = 107, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "RoK", levelmin = 35, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- ZEM to 1.0 (P99)
-table.insert(zones.zones, { fullName = "Veeshan's Peak", shortName = "veeshan", id = 108, zem = { emu = 1.30, live = 1.30, lazarus = 1.30 }, expansion = "RoK", levelmin = 50, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- ZEM to 1.3 (P99)
-table.insert(zones.zones, { fullName = "Veksar", shortName = "veksar", id = 109, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "RoK", levelmin = 40, levelmax = 55, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Halls of Betrayal", shortName = "chardokb", id = 122, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "RoK", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+--===== Classic : 118 zones =====
+exp = "Classic"
 
--- Scars of Velious zones (Updated)
-table.insert(zones.zones, { fullName = "Iceclad Ocean", shortName = "iceclad", id = 110, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Velious", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 50
-table.insert(zones.zones, { fullName = "Tower of Frozen Shadow", shortName = "frozenshadow", id = 111, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 35, levelmax = 55, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Velketor's Labyrinth", shortName = "velketor", id = 112, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 45, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Kael Drakkal", shortName = "kael", id = 113, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 50, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Skyshrine", shortName = "skyshrine", id = 114, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 45, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Thurgadin", shortName = "thurgadina", id = 115, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Velious", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15
-table.insert(zones.zones, { fullName = "Eastern Wastes", shortName = "eastwastes", id = 116, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Velious", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Cobalt Scar", shortName = "cobaltscar", id = 117, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Velious", levelmin = 45, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Great Divide", shortName = "greatdivide", id = 118, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Velious", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Wakening Land", shortName = "wakening", id = 119, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Velious", levelmin = 45, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Western Wastes", shortName = "westwastes", id = 120, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Velious", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 65
-table.insert(zones.zones, { fullName = "Crystal Caverns", shortName = "crystal", id = 121, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dragon Necropolis", shortName = "necropolis", id = 123, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 65
-table.insert(zones.zones, { fullName = "Temple of Veeshan", shortName = "templeveeshan", id = 124, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 65
-table.insert(zones.zones, { fullName = "Siren's Grotto", shortName = "sirens", id = 125, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 50, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Mischief", shortName = "mischiefplane", id = 126, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 50, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Growth", shortName = "growthplane", id = 127, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 50, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sleeper's Tomb", shortName = "sleeper", id = 128, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 65
-table.insert(zones.zones, { fullName = "Icewell Keep", shortName = "thurgadinb", id = 129, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Velious", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="akanon", name="Ak'Anon", id=55, min=22, max=34, zem=1.33, indoor=true, city=true }  -- 321 spawns, city median
+add{ short="arttest", name="Art Testing Domain", id=996, zem=1.00, indoor=true, cat="dev", emuOnly=true }  -- no spawn data
+add{ short="aviak", name="Aviak Village", id=53, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="befallen", name="Befallen (A)", id=36, min=7, max=16, zem=2.13 }  -- 350 spawns
+add{ short="befallenb", name="Befallen (B)", id=411, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="blackburrow", name="BlackBurrow", id=17, min=5, max=12, zem=1.33, indoor=true }  -- 295 spawns
+add{ short="butcher", name="Butcherblock Mountains", id=68, min=1, max=35, zem=1.00, indoor=true }  -- 574 spawns
+add{ short="mistmoore", name="Castle Mistmoore", id=59, min=29, max=34, zem=1.20, indoor=true }  -- 368 spawns
+add{ short="cazicthule", name="Cazic-Thule", id=48, min=53, max=58, zem=1.13 }  -- 748 spawns
+add{ short="crushbone", name="Clan Crushbone", id=58, min=4, max=13, zem=2.13 }  -- 236 spawns
+add{ short="runnyeye", name="Clan RunnyEye", id=11, min=15, max=23, zem=1.33, indoor=true }  -- 347 spawns
+add{ short="commonlands", name="Commonlands", id=408, min=3, max=45, zem=1.00, indoor=true }  -- 391 spawns
+add{ short="cauldron", name="Dagnor's Cauldron", id=70, min=12, max=39, zem=1.00 }  -- 121 spawns
+add{ short="apprentice", name="Designer Apprentice", id=999, zem=1.00, cat="dev", emuOnly=true }  -- no spawn data
+add{ short="ecommons", name="East Commonlands", id=22, min=2, max=40, zem=1.00, indoor=true, emuOnly=true }  -- 332 spawns
+add{ short="freporte", name="East Freeport", id=10, min=2, max=25, zem=1.00, indoor=true, city=true }  -- 244 spawns, city median
+add{ short="freeporteast", name="East Freeport", id=382, min=40, max=70, zem=1.00, indoor=true }  -- 279 spawns
+add{ short="eastkarana", name="East Karana", id=15, min=11, max=35, zem=1.00 }  -- 350 spawns
+add{ short="erudsxing", name="Erud's Crossing", id=98, min=10, max=33, zem=1.00 }  -- 93 spawns
+add{ short="erudnext", name="Erudin", id=24, min=14, max=30, zem=1.33, indoor=true, city=true }  -- 122 spawns, city median
+add{ short="erudnint", name="Erudin Palace", id=23, min=30, max=35, zem=1.33, city=true }  -- 79 spawns, city median
+add{ short="unrest", name="Estate of Unrest", id=63, min=15, max=28, zem=1.73, indoor=true }  -- 304 spawns
+add{ short="everfrost", name="Everfrost Peaks", id=30, min=2, max=45, zem=1.00, indoor=true }  -- 28 spawns
+add{ short="felwithea", name="Felwithe (A)", id=61, min=40, max=40, zem=1.33, indoor=true, city=true }  -- 96 spawns, city median
+add{ short="felwitheb", name="Felwithe (B)", id=62, min=40, max=40, zem=1.33, indoor=true, city=true, cat="city" }  -- 38 spawns, city median
+add{ short="freeportsewers", name="Freeport Sewers", id=384, min=10, max=20, zem=1.00, indoor=true }  -- 104 spawns
+add{ short="beholder", name="Gorge of King Xorbb", id=16, min=11, max=22, zem=1.00 }  -- 100 spawns
+add{ short="grobb", name="Grobb", id=52, min=40, max=40, zem=1.33, city=true }  -- 119 spawns, city median
+add{ short="halas", name="Halas", id=29, min=45, max=45, zem=1.33, indoor=true, city=true }  -- 91 spawns, city median
+add{ short="highkeep", name="HighKeep", id=6, min=23, max=40, zem=2.00 }  -- 220 spawns
+add{ short="highpasshold", name="Highpass Hold", id=407, min=15, max=34, zem=1.00 }  -- 369 spawns
+add{ short="highpasskeep", name="Highpass Keep", id=412, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="paw", name="Infected Paw", id=18, min=64, max=64, zem=0.90, indoor=true }  -- 1255 spawns
+add{ short="innothule", name="Innothule Swamp (A)", id=46, min=2, max=12, zem=1.00, indoor=true, emuOnly=true }  -- 245 spawns
+add{ short="innothuleb", name="Innothule Swamp (B)", id=413, min=1, max=8, zem=1.00, indoor=true }  -- 329 spawns
+add{ short="kaladima", name="Kaladim (A)", id=60, min=39, max=41, zem=1.33, indoor=true, city=true }  -- 68 spawns, city median
+add{ short="kaladimb", name="Kaladim (B)", id=67, min=39, max=41, zem=1.33, indoor=true, city=true }  -- 81 spawns, city median
+add{ short="kedge", name="Kedge Keep", id=64, min=38, max=49, zem=1.33 }  -- 261 spawns
+add{ short="kerraridge", name="Kerra Isle", id=74, min=14, max=21, zem=1.20 }  -- 248 spawns
+add{ short="kithicor", name="Kithicor Forest (A)", id=20, min=29, max=37, zem=1.00, indoor=true }  -- 1722 spawns
+add{ short="kithforest", name="Kithicor Forest (B)", id=410, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="lakerathe", name="Lake Rathetear", id=51, min=11, max=35, zem=1.00, indoor=true }  -- 300 spawns
+add{ short="lavastorm", name="Lavastorm Mountains", id=27, min=11, max=60, zem=0.75, indoor=true }  -- 398 spawns
+add{ short="load", name="Loading (A)", id=184, zem=1.00, indoor=true, cat="dev" }  -- no spawn data
+add{ short="load2", name="Loading (B)", id=185, zem=1.00, indoor=true, cat="dev" }  -- no spawn data
+add{ short="clz", name="Loading (C)", id=190, zem=1.00, cat="dev" }  -- no spawn data
+add{ short="gukbottom", name="Lower Guk", id=66, min=31, max=42, zem=1.06, indoor=true }  -- 465 spawns
+add{ short="erudsxing2", name="Marauder's Mire", id=130, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="misty", name="Misty Thicket (A)", id=33, min=3, max=11, zem=1.00, indoor=true, emuOnly=true }  -- 480 spawns
+add{ short="mistythicket", name="Misty Thicket (B)", id=415, min=2, max=11, zem=1.00, indoor=true }  -- 461 spawns
+add{ short="rathemtn", name="Mountains of Rathe", id=50, min=6, max=40, zem=1.00, indoor=true }  -- 535 spawns
+add{ short="soldungb", name="Nagafen's Lair", id=32, min=35, max=49, zem=1.06, indoor=true }  -- 270 spawns
+add{ short="najena", name="Najena", id=44, min=12, max=23, zem=1.73, indoor=true }  -- 256 spawns
+add{ short="nedaria", name="Nedaria's Landing", id=182, min=21, max=65, zem=1.00, hot=25 }  -- 431 spawns
+add{ short="nektropos", name="Nektropos", id=28, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="nektulos", name="Nektulos Forest", id=25, min=1, max=9, zem=1.00, indoor=true }  -- 3278 spawns
+add{ short="neriakb", name="Neriak Commons", id=41, min=40, max=40, zem=1.33, indoor=true, city=true }  -- 151 spawns, city median
+add{ short="neriaka", name="Neriak Foreign Quarter", id=40, min=37, max=40, zem=1.33, indoor=true, city=true }  -- 85 spawns, city median
+add{ short="neriakd", name="Neriak Palace", id=43, min=100, max=101, zem=1.00, city=true }  -- Alla: 221 NPCs
+add{ short="neriakc", name="Neriak Third Gate", id=42, min=38, max=40, zem=1.33, indoor=true, city=true }  -- 126 spawns, city median
+add{ short="freportn", name="North Freeport", id=8, min=30, max=45, zem=1.33, indoor=true, city=true }  -- 118 spawns, city median
+add{ short="northkarana", name="North Karana", id=13, min=10, max=36, zem=1.00 }  -- 232 spawns
+add{ short="qeynos2", name="North Qeynos", id=2, min=1, max=5, zem=1.00, city=true }  -- 216 spawns, city median
+add{ short="nro", name="North Ro (A)", id=34, min=5, max=30, zem=1.00, indoor=true, emuOnly=true }  -- 236 spawns
+add{ short="northro", name="North Ro (B)", id=392, min=1, max=40, zem=1.00 }  -- 308 spawns
+add{ short="oasis", name="Oasis of Marr", id=37, min=11, max=36, zem=1.00, indoor=true, emuOnly=true }  -- 288 spawns
+add{ short="oot", name="Ocean of Tears", id=69, min=13, max=46, zem=1.13, emuOnly=true }  -- 320 spawns
+add{ short="oceanoftears", name="Ocean Of Tears", id=409, min=15, max=45, zem=1.00 }  -- 598 spawns
+add{ short="oggok", name="Oggok", id=49, min=36, max=40, zem=1.33, city=true }  -- 132 spawns, city median
+add{ short="paineel", name="Paineel", id=75, min=15, max=34, zem=1.00, city=true }  -- 180 spawns, city median
+add{ short="permafrost", name="Permafrost Keep", id=73, min=17, max=44, zem=1.20, indoor=true }  -- 454 spawns
+add{ short="fearplane", name="Plane of Fear", id=72, min=49, max=52, zem=1.13, indoor=true }  -- 248 spawns
+add{ short="poknowledge", name="Plane of Knowledge", id=202, min=60, max=99, zem=1.00, cat="hub" }  -- 520 spawns
+add{ short="airplane", name="Plane of Sky", id=71, min=53, max=58, zem=1.13, indoor=true }  -- 125 spawns
+add{ short="qcat", name="Qeynos Catacombs", id=45, min=1, max=60, zem=1.00, indoor=true }  -- 194 spawns
+add{ short="qeytoqrg", name="Qeynos Hills", id=4, min=3, max=25, zem=1.00 }  -- 366 spawns
+add{ short="rivervale", name="Rivervale", id=19, min=6, max=30, zem=1.33, indoor=true, city=true }  -- 184 spawns, city median
+add{ short="takishruins", name="Ruins of Takish-Hiz", id=376, min=55, max=67, zem=1.00 }  -- 175 spawns
+add{ short="shadowrest", name="Shadowrest", id=187, min=20, max=50, zem=1.00, cat="hub" }  -- 14 spawns
+add{ short="soldunga", name="Solusek's Eye", id=31, min=24, max=32, zem=1.73, indoor=true, hot=30 }  -- 476 spawns
+add{ short="southkarana", name="South Karana", id=14, min=10, max=31, zem=1.00, hot=20 }  -- 1240 spawns
+add{ short="qeynos", name="South Qeynos", id=1, min=10, max=27, zem=1.00, city=true }  -- 207 spawns, city median
+add{ short="sro", name="South Ro (A)", id=35, min=6, max=35, zem=1.00, indoor=true, emuOnly=true }  -- 370 spawns
+add{ short="southro", name="South Ro (B)", id=393, min=10, max=49, zem=1.00 }  -- 378 spawns
+add{ short="steamfont", name="Steamfont Mountains", id=56, min=2, max=26, zem=1.00, indoor=true }  -- 370 spawns
+add{ short="steamfontmts", name="Steamfont Mountains", id=448, min=1, max=26, zem=1.00, indoor=true }  -- 378 spawns
+add{ short="stonebrunt", name="Stonebrunt Mountains", id=100, min=17, max=30, zem=1.00, indoor=true, hot=25 }  -- 619 spawns
+add{ short="cshome", name="Sunset Home", id=26, min=50, max=65, zem=1.00, indoor=true, cat="housing", emuOnly=true }  -- 40 spawns
+add{ short="qrg", name="Surefall Glade", id=3, min=2, max=24, zem=1.33, indoor=true, city=true }  -- 72 spawns, city median
+add{ short="soltemple", name="Temple of Solusek Ro", id=80, min=34, max=40, zem=1.33, indoor=true }  -- 49 spawns
+add{ short="arena", name="The Arena (A)", id=77, min=75, max=80, zem=1.00, indoor=true, cat="arena" }  -- 5 spawns
+add{ short="arena2", name="The Arena (B)", id=180, zem=1.00, indoor=true, cat="arena" }  -- no spawn data
+add{ short="barter", name="The Barter Hall", id=346, zem=1.00, cat="hub", emuOnly=true }  -- no spawn data
+add{ short="bazaar", name="The Bazaar", id=151, min=35, max=60, zem=1.00, cat="hub" }  -- 116 spawns
+add{ short="bazaar2", name="The Bazaar (2)", cat="instance", emuOnly=true }  -- no spawn data
+add{ short="soldungc", name="The Caverns of Exile", id=278, min=54, max=60, zem=2.00, indoor=true }  -- 282 spawns
+add{ short="feerrott", name="The Feerrott(A)", id=47, min=3, max=32, zem=1.00, indoor=true }  -- 563 spawns
+add{ short="fhalls", name="The Forgotten Halls", id=998, min=2, max=4, zem=1.00 }  -- 57 spawns
+add{ short="gfaydark", name="The Greater Faydark", id=54, min=2, max=45, zem=1.00, indoor=true }  -- 632 spawns
+add{ short="guildlobby", name="The Guild Lobby", id=344, min=50, max=70, zem=1.00, cat="hub" }  -- 49 spawns
+add{ short="jaggedpine", name="The Jaggedpine Forest", id=181, min=34, max=44, zem=1.00, indoor=true }  -- 599 spawns
+add{ short="lfaydark", name="The Lesser Faydark", id=57, min=6, max=30, zem=1.00, indoor=true }  -- 301 spawns
+add{ short="tutoriala", name="The Mines of Gloomingdeep (A)", id=188, min=5, max=5, zem=1.00, cat="unused" }  -- 1 spawns
+add{ short="tutorialb", name="The Mines of Gloomingdeep (B)", id=189, min=2, max=9, zem=1.00 }  -- 361 spawns
+add{ short="hateplane", name="The Plane of Hate", id=76, min=50, max=56, zem=1.00, indoor=true }  -- 175 spawns
+add{ short="hateplaneb", name="The Plane of Hate", id=186, min=54, max=64, zem=1.13 }  -- 728 spawns
+add{ short="hole", name="The Ruins of Old Paineel", id=39, min=45, max=56, zem=1.33, indoor=true }  -- 1171 spawns
+add{ short="warrens", name="The Warrens", id=101, min=5, max=8, zem=2.00, indoor=true, city=true }  -- 584 spawns, city median
+add{ short="dragonscalea", name="Tinmizer's Wunderwerks", cat="hub" }  -- no spawn data
+add{ short="tox", name="Toxxulia Forest", id=38, min=1, max=35, zem=1.00, indoor=true, emuOnly=true }  -- 495 spawns
+add{ short="toxxulia", name="Toxxulia Forest", id=414, min=2, max=20, zem=1.00, indoor=true }  -- 538 spawns
+add{ short="tutorial", name="Tutorial Zone", id=183, zem=1.00, indoor=true, cat="nodata" }  -- no spawn data
+add{ short="guktop", name="Upper Guk", id=65, min=13, max=25, zem=2.00, indoor=true, hot=20 }  -- 579 spawns
+add{ short="weddingchapeldark", name="Wedding Chapel", id=494, min=1, max=1, cat="event" }  -- 33 spawns
+add{ short="commons", name="West Commonlands", id=21, min=7, max=32, zem=1.00, indoor=true, emuOnly=true }  -- 191 spawns
+add{ short="freportw", name="West Freeport", id=9, min=1, max=26, zem=1.00, indoor=true, city=true }  -- 220 spawns, city median
+add{ short="freeportwest", name="West Freeport", id=383, min=25, max=70, zem=1.00 }  -- 314 spawns
+add{ short="qey2hh1", name="West Karana", id=12, min=4, max=30, zem=1.00 }  -- 394 spawns
 
---- Shadows of Luclin zones (Updated)
-table.insert(zones.zones, { fullName = "Shadow Haven", shortName = "shadowhaven", id = 150, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15
-table.insert(zones.zones, { fullName = "The Nexus", shortName = "nexus", id = 152, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15
-table.insert(zones.zones, { fullName = "Echo Caverns", shortName = "echo", id = 153, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 20, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Acrylia Caverns", shortName = "acrylia", id = 154, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Shar Vahl", shortName = "sharvahl", id = 155, zem = { emu = 1.33, live = 1.33, lazarus = 1.33 }, expansion = "Luclin", levelmin = 1, levelmax = 15, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 15
-table.insert(zones.zones, { fullName = "Paludal Caverns", shortName = "paludal", id = 156, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 15, levelmax = 35, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Fungus Grove", shortName = "fungusgrove", id = 157, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Vex Thal", shortName = "vexthal", id = 158, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 60, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sanctus Seru", shortName = "sseru", id = 159, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Katta Castellum", shortName = "katta", id = 160, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Netherbian Lair", shortName = "netherbian", id = 161, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Ssraeshza Temple", shortName = "ssratemple", id = 162, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Grieg's End", shortName = "griegsend", id = 163, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 50, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Deep", shortName = "thedeep", id = 164, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Shadeweaver's Thicket", shortName = "shadeweaver", id = 165, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 1, levelmax = 20, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Hollowshade Moor", shortName = "hollowshade", id = 166, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 20, levelmax = 40, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Grimling Forest", shortName = "grimling", id = 167, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Marus Seru", shortName = "mseru", id = 168, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Mons Letalis", shortName = "letalis", id = 169, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Twilight Sea", shortName = "twilight", id = 170, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 20, levelmax = 40, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Grey", shortName = "thegrey", id = 171, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Tenebrous Mountains", shortName = "tenebrous", id = 172, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 40, levelmax = 60, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Maiden's Eye", shortName = "maiden", id = 173, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 50, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dawnshroud Peaks", shortName = "dawnshroud", id = 174, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 30, levelmax = 50, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Scarlet Desert", shortName = "scarlet", id = 175, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "Luclin", levelmin = 20, levelmax = 40, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Umbral Plains", shortName = "umbral", id = 176, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Akheva Ruins", shortName = "akheva", id = 177, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "Luclin", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+--===== RoK : 28 zones =====
+exp = "RoK"
 
--- Planes of Power zones (Updated)
-table.insert(zones.zones, { fullName = "Ruins of Lxanvom", shortName = "codecay", id = 200, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Justice", shortName = "pojustice", id = 201, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Nightmare", shortName = "ponightmare", id = 204, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Disease", shortName = "podisease", id = 205, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Innovation", shortName = "poinnovation", id = 206, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Torment", shortName = "potorment", id = 207, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 60, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Valor", shortName = "povalor", id = 208, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Torden, The Bastion of Thunder", shortName = "bothunder", id = 209, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 60, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Storms", shortName = "postorms", id = 210, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 55, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Halls of Honor", shortName = "hohonora", id = 211, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 60, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Solusek Ro's Tower", shortName = "solrotower", id = 212, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of War", shortName = "powar", id = 213, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Drunder, Fortress of Zek", shortName = "potactics", id = 214, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Eryslai, the Kingdom of Wind", shortName = "poair", id = 215, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Reef of Coirnav", shortName = "powater", id = 216, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Doomfire, The Burning Lands", shortName = "pofire", id = 217, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Vegarlson, The Earthen Badlands", shortName = "poeartha", id = 218, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Time (A)", shortName = "potimea", id = 219, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Temple of Marr (A)", shortName = "hohonorb", id = 220, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Lair of Terris Thule", shortName = "nightmareb", id = 221, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Stronghold of the Twelve", shortName = "poearthb", id = 222, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Time (B)", shortName = "potimeb", id = 223, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "PoP", levelmin = 65, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="burningwood", name="Burning Woods", id=87, min=37, max=45, zem=1.00, indoor=true }  -- 471 spawns
+add{ short="chardok", name="Chardok", id=103, min=49, max=56, zem=1.50, indoor=true }  -- 713 spawns
+add{ short="citymist", name="City of Mist", id=90, min=36, max=45, zem=0.85, indoor=true, hot=40 }  -- 968 spawns
+add{ short="dalnir", name="Dalnir", id=104, min=26, max=30, zem=1.13, indoor=true, hot=30 }  -- 227 spawns
+add{ short="dreadlands", name="Dreadlands", id=86, min=34, max=40, zem=1.00, indoor=true, hot=35 }  -- 477 spawns
+add{ short="cabeast", name="East Cabilis", id=106, min=1, max=30, zem=1.33, indoor=true, city=true }  -- 203 spawns, city median
+add{ short="firiona", name="Firiona Vie", id=84, min=28, max=45, zem=1.00, indoor=true }  -- 567 spawns
+add{ short="frontiermtns", name="Frontier Mountains", id=92, min=28, max=35, zem=1.00, indoor=true }  -- 489 spawns
+add{ short="charasis", name="Howling Stones", id=105, min=45, max=52, zem=1.13, indoor=true }  -- 654 spawns
+add{ short="kaesora", name="Kaesora", id=88, min=31, max=35, zem=1.46, indoor=true }  -- 297 spawns
+add{ short="karnor", name="Karnor's Castle", id=102, min=42, max=50, zem=1.13, indoor=true }  -- 564 spawns
+add{ short="kurn", name="Kurn's Tower", id=97, min=12, max=17, zem=2.00, indoor=true }  -- 628 spawns
+add{ short="lakeofillomen", name="Lake of Ill Omen", id=85, min=12, max=35, zem=0.80, indoor=true, hot=25 }  -- 647 spawns
+add{ short="nurga", name="Mines of Nurga", id=107, min=31, max=49, zem=0.95 }  -- 1244 spawns
+add{ short="sebilis", name="Old Sebilis", id=89, min=47, max=55, zem=2.50, indoor=true, hot=50 }  -- 1098 spawns
+add{ short="skyfire", name="Skyfire Mountains", id=91, min=43, max=51, zem=1.06, indoor=true, hot=50 }  -- 312 spawns
+add{ short="swampofnohope", name="Swamp of No Hope", id=83, min=11, max=25, zem=1.00, indoor=true }  -- 750 spawns
+add{ short="droga", name="Temple of Droga", id=81, min=29, max=53, zem=0.95 }  -- 4666 spawns
+add{ short="emeraldjungle", name="The Emerald Jungle", id=94, min=35, max=40, zem=1.00, indoor=true, hot=40 }  -- 332 spawns
+add{ short="fieldofbone", name="The Field of Bone", id=78, min=2, max=27, zem=1.00, indoor=true }  -- 607 spawns
+add{ short="chardokb", name="The Halls of Betrayal", id=277, min=56, max=63, zem=2.00, indoor=true }  -- 507 spawns
+add{ short="overthere", name="The Overthere", id=93, min=30, max=33, zem=1.00, indoor=true, city=true }  -- 539 spawns, city median
+add{ short="timorous", name="Timorous Deep", id=96, min=14, max=50, zem=1.00, indoor=true }  -- 350 spawns
+add{ short="trakanon", name="Trakanon's Teeth", id=95, min=36, max=50, zem=1.00, indoor=true }  -- 553 spawns
+add{ short="veeshan", name="Veeshan's Peak", id=108, min=62, max=69, zem=1.00, indoor=true }  -- 712 spawns
+add{ short="veksar", name="Veksar", id=109, min=51, max=60, zem=1.33, indoor=true, hot=60 }  -- 285 spawns
+add{ short="warslikswood", name="Warsliks Wood", id=79, min=3, max=26, zem=1.00, indoor=true }  -- 435 spawns
+add{ short="cabwest", name="West Cabilis", id=82, min=30, max=50, zem=1.33, indoor=true, city=true }  -- 68 spawns, city median
 
--- Legacy of Ykesha zones (Updated)
-table.insert(zones.zones, { fullName = "Gulf of Gunthak", shortName = "gunthak", id = 224, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "LoY", levelmin = 20, levelmax = 45, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 45
-table.insert(zones.zones, { fullName = "Dulak's Harbor", shortName = "dulak", id = 225, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "LoY", levelmin = 30, levelmax = 55, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Torgiran Mines", shortName = "torgiran", id = 226, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "LoY", levelmin = 35, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Crypt of Nadox", shortName = "nadox", id = 227, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "LoY", levelmin = 35, levelmax = 60, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Hate's Fury, The Scorned Maiden", shortName = "hatesfury", id = 228, zem = { emu = 1.13, live = 1.13, lazarus = 1.13 }, expansion = "LoY", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+--===== Velious : 19 zones =====
+exp = "Velious"
 
--- Lost Dungeons of Norrath zones
-table.insert(zones.zones, { fullName = "The Cauldron of Lost Souls", shortName = "guka", id = 229, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Bloodied Quarries", shortName = "ruja", id = 230, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Sunken Library", shortName = "taka", id = 231, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Silent Gallery", shortName = "mira", id = 232, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Forlorn Caverns", shortName = "mmca", id = 233, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Drowning Crypt", shortName = "gukb", id = 234, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Halls of War", shortName = "rujb", id = 235, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Shifting Tower", shortName = "takb", id = 236, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Maw of the Menagerie", shortName = "mirb", id = 237, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Dreary Grotto", shortName = "mmcb", id = 238, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Ancient Aqueducts", shortName = "gukc", id = 239, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Wind Bridges", shortName = "rujc", id = 240, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Fading Temple", shortName = "takc", id = 241, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Spider Den", shortName = "mirc", id = 242, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Asylum of Invoked Stone", shortName = "mmcc", id = 243, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Mushroom Grove", shortName = "gukd", id = 244, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Gladiator Pits", shortName = "rujd", id = 245, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Royal Observatory", shortName = "takd", id = 246, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Hushed Banquet", shortName = "mird", id = 247, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Chambers of Eternal Affliction", shortName = "mmcd", id = 248, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Foreboding Prison", shortName = "guke", id = 249, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Drudge Hollows", shortName = "ruje", id = 250, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The River of Recollection", shortName = "take", id = 251, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Frosted Halls", shortName = "mire", id = 252, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Sepulcher of the Damned", shortName = "mmce", id = 253, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Chapel of the Witnesses", shortName = "gukf", id = 254, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Fortified Lair of the Taskmasters", shortName = "rujf", id = 255, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Sandfall Corridors", shortName = "takf", id = 256, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Forgotten Wastes", shortName = "mirf", id = 257, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Ritualistic Summoning Grounds", shortName = "mmcf", id = 258, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Root Garden", shortName = "gukg", id = 259, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Hidden Vale", shortName = "rujg", id = 260, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Balancing Chamber", shortName = "takg", id = 261, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Heart of the Menagerie", shortName = "mirg", id = 262, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Cesspits of Putrescence", shortName = "mmcg", id = 263, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Accursed Sanctuary", shortName = "gukh", id = 264, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Deepest Guk); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Blazing Forge", shortName = "rujh", id = 265, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Sweeping Tides", shortName = "takh", id = 266, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Morbid Laboratory", shortName = "mirh", id = 267, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Aisles of Blood", shortName = "mmch", id = 268, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Arena of Chance", shortName = "ruji", id = 269, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Antiquated Palace", shortName = "taki", id = 270, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Theater of Imprisoned Horrors", shortName = "miri", id = 271, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Halls of Sanguinary Rites", shortName = "mmci", id = 272, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Barracks of War", shortName = "rujj", id = 273, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Rujarkian Hills); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Prismatic Corridors", shortName = "takj", id = 274, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Takish-Hiz); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Grand Library", shortName = "mirj", id = 275, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Miragul’s Menagerie); ZEM emu matches typical EMU
-table.insert(zones.zones, { fullName = "The Infernal Sanctuary", shortName = "mmcj", id = 276, zem = { emu = 1.13, live = "--", lazarus = 1.13 }, expansion = "LDoN", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, dungeon (Mistmoore Catacombs); ZEM emu matches typical EMU
--- Note: ZEM emu from provided data, lazarus set to emu. indoor from EQEmu (all LDON zones are instanced dungeons, indoor=true). Verify with run to zone script (${Zone.Outdoor}, ${Zone.Type}). Server detection via mq.TLO.EverQuest.Server() (sotb->EMU).
+add{ short="cobaltscar", name="Cobalt Scar", id=117, min=38, max=50, zem=1.00, indoor=true }  -- 310 spawns
+add{ short="crystal", name="Crystal Caverns", id=121, min=29, max=37, zem=1.13 }  -- 260 spawns
+add{ short="necropolis", name="Dragon Necropolis", id=123, min=48, max=58, zem=1.50, indoor=true }  -- 469 spawns
+add{ short="eastwastes", name="Eastern Wastes", id=116, min=32, max=55, zem=1.00, indoor=true }  -- 591 spawns
+add{ short="greatdivide", name="Great Divide", id=118, min=29, max=53, zem=1.00, indoor=true, hot=35 }  -- 970 spawns
+add{ short="iceclad", name="Iceclad Ocean", id=110, min=29, max=35, zem=1.00, indoor=true }  -- 300 spawns
+add{ short="thurgadinb", name="Icewell Keep", id=129, min=48, max=57, zem=1.13, indoor=true }  -- 140 spawns
+add{ short="kael", name="Kael Drakkal", id=113, min=35, max=56, zem=1.13, indoor=true }  -- 953 spawns
+add{ short="growthplane", name="Plane of Growth", id=127, min=52, max=60, zem=1.13, indoor=true }  -- 347 spawns
+add{ short="mischiefplane", name="Plane of Mischief", id=126, min=52, max=63, zem=1.13, indoor=true }  -- 1055 spawns
+add{ short="sirens", name="Siren's Grotto", id=125, min=50, max=56, zem=0.85 }  -- 1002 spawns
+add{ short="skyshrine", name="Skyshrine", id=114, min=38, max=62, zem=1.13, indoor=true }  -- 1000 spawns
+add{ short="sleeper", name="Sleeper's Tomb", id=128, min=66, max=66, zem=1.20, indoor=true }  -- 295 spawns
+add{ short="templeveeshan", name="Temple of Veeshan", id=124, min=60, max=65, zem=1.33, indoor=true }  -- 402 spawns
+add{ short="wakening", name="The Wakening Land", id=119, min=37, max=48, zem=1.00, indoor=true }  -- 619 spawns
+add{ short="thurgadina", name="Thurgadin", id=115, min=31, max=42, zem=1.13, indoor=true }  -- 239 spawns
+add{ short="frozenshadow", name="Tower of Frozen Shadow", id=111, min=30, max=40, zem=1.13, indoor=true }  -- 405 spawns
+add{ short="velketor", name="Velketor's Labyrinth", id=112, min=46, max=55, zem=1.50, indoor=true, hot=50 }  -- 782 spawns
+add{ short="westwastes", name="Western Wastes", id=120, min=48, max=66, zem=1.06, indoor=true }  -- 405 spawns
 
--- Gates of Discord zones (Updated)
-table.insert(zones.zones, { fullName = "Abysmal Sea", shortName = "abysmal", id = 279, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "GoD", levelmin = 50, levelmax = 65, hotzone = false, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 65
-table.insert(zones.zones, { fullName = "Natimbi, The Broken Shores", shortName = "natimbi", id = 280, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "GoD", levelmin = 40, levelmax = 60, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Qinimi, Court of Nihilia", shortName = "qinimi", id = 281, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Riwwi, Coliseum of Games", shortName = "riwwi", id = 282, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Barindu, Hanging Gardens", shortName = "barindu", id = 283, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Ferubi, Forgotten Temple of Taelosia", shortName = "ferubi", id = 284, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sewers of Nihilia, Pool of Sludge", shortName = "snpool", id = 285, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sewers of Nihilia, Lair of Trapped Ones", shortName = "snlair", id = 286, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sewers of Nihilia, Purifying Plant", shortName = "snplant", id = 287, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sewers of Nihilia, the Crematory", shortName = "sncrematory", id = 288, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Tipt, Treacherous Crags", shortName = "tipt", id = 289, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Vxed, The Crumbling Caverns", shortName = "vxed", id = 290, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Yxtta, Pulpit of Exiles", shortName = "yxtta", id = 291, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Uqua, The Ocean God Chantry", shortName = "uqua", id = 292, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Kod'Taz, Broken Trial Grounds", shortName = "kodtaz", id = 293, zem = { emu = 2.50, live = 2.50, lazarus = 2.50 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Ikkinz, Chambers of Destruction", shortName = "ikkinz", id = 294, zem = { emu = 1.50, live = 1.50, lazarus = 1.50 }, expansion = "GoD", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Qvic, Prayer Grounds of Calling", shortName = "qvic", id = 295, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Inktu`Ta, The Unmasked Chapel", shortName = "inktuta", id = 296, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "GoD", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Txevu, Lair of the Elite", shortName = "txevu", id = 297, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "GoD", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Tacvi, Seat of the Slaver", shortName = "tacvi", id = 298, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "GoD", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Shadowrest", shortName = "shadowrest", id = 299, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "GoD", levelmin = 1, levelmax = 75, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 75, assigned placeholder ID 299
+--===== Luclin : 27 zones =====
+exp = "Luclin"
 
--- Omens of War zones (Updated)
-table.insert(zones.zones, { fullName = "Wall of Slaughter", shortName = "wallofslaughter", id = 300, zem = { emu = 2.50, live = 2.50, lazarus = 2.50 }, expansion = "OoW", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Bloodfields", shortName = "bloodfields", id = 301, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "OoW", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dranik's Scar", shortName = "draniksscar", id = 302, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 40, levelmax = 60, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Nobles' Causeway", shortName = "causeway", id = 303, zem = { emu = 2.25, live = 2.25, lazarus = 2.25 }, expansion = "OoW", levelmin = 40, levelmax = 60, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Muramite Proving Grounds (A)", shortName = "chambersa", id = 304, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Muramite Proving Grounds (B)", shortName = "chambersb", id = 305, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Muramite Proving Grounds (C)", shortName = "chambersc", id = 306, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Muramite Proving Grounds (D)", shortName = "chambersd", id = 307, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Muramite Proving Grounds (E)", shortName = "chamberse", id = 308, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Muramite Proving Grounds (F)", shortName = "chambersf", id = 309, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Muramite Proving Grounds", shortName = "provinggrounds", id = 316, zem = { emu = 2.75, live = 2.75, lazarus = 2.75 }, expansion = "OoW", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Asylum of Anguish", shortName = "anguish", id = 317, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dranik's Hollows (A)", shortName = "dranikhollowsa", id = 318, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dranik's Hollows (B)", shortName = "dranikhollowsb", id = 319, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dranik's Hollows (C)", shortName = "dranikhollowsc", id = 320, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dranik's Hollows (D)", shortName = "dranikhollowsd", id = 321, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Dranik's Hollows (E)", shortName = "dranikhollowse", id = 322, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Dranik's Hollows (F)", shortName = "dranikhollowsf", id = 323, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Dranik's Hollows (G)", shortName = "dranikhollowsg", id = 324, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Dranik's Hollows (H)", shortName = "dranikhollowsh", id = 325, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Dranik's Hollows (I)", shortName = "dranikhollowsi", id = 326, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Dranik's Hollows (J)", shortName = "dranikhollowsj", id = 327, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Placeholder ZEM and levels, verify
-table.insert(zones.zones, { fullName = "Catacombs of Dranik (A)", shortName = "dranikcatacombsa", id = 328, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Catacombs of Dranik (B)", shortName = "dranikcatacombsb", id = 329, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Catacombs of Dranik (C)", shortName = "dranikcatacombsc", id = 330, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sewers of Dranik (A)", shortName = "draniksewersa", id = 331, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sewers of Dranik (B)", shortName = "draniksewersb", id = 332, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sewers of Dranik (C)", shortName = "draniksewersc", id = 333, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Riftseekers' Sanctum", shortName = "riftseekers", id = 334, zem = { emu = 3.00, live = 3.00, lazarus = 3.00 }, expansion = "OoW", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Harbingers' Spire", shortName = "harbingers", id = 335, zem = { emu = 2.00, live = 2.00, lazarus = 2.00 }, expansion = "OoW", levelmin = 45, levelmax = 60, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Ruined City of Dranik", shortName = "dranik", id = 336, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "OoW", levelmin = 40, levelmax = 60, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="acrylia", name="Acrylia Caverns", id=154, min=44, max=54, zem=2.00, indoor=true }  -- 691 spawns
+add{ short="akheva", name="Akheva Ruins", id=179, min=49, max=56, zem=1.75, indoor=true }  -- 475 spawns
+add{ short="dawnshroud", name="Dawnshroud Peaks", id=174, min=28, max=41, zem=1.75 }  -- 909 spawns
+add{ short="echo", name="Echo Caverns", id=153, min=27, max=48, zem=1.06, indoor=true }  -- 277 spawns
+add{ short="fungusgrove", name="Fungus Grove", id=157, min=47, max=53, zem=2.00, indoor=true }  -- 565 spawns
+add{ short="griegsend", name="Grieg's End", id=163, min=53, max=58, zem=0.90 }  -- 880 spawns
+add{ short="grimling", name="Grimling Forest", id=167, min=34, max=42, zem=1.06 }  -- 1139 spawns
+add{ short="hollowshade", name="Hollowshade Moor", id=166, min=16, max=27, zem=1.00, indoor=true }  -- 2067 spawns
+add{ short="katta", name="Katta Castellum", id=160, min=37, max=43, zem=1.13, indoor=true, city=true }  -- 463 spawns, city median
+add{ short="mseru", name="Marus Seru", id=168, min=21, max=29, zem=1.00, indoor=true }  -- 460 spawns
+add{ short="letalis", name="Mons Letalis", id=169, min=36, max=41, zem=1.75, indoor=true, hot=40 }  -- 341 spawns
+add{ short="netherbian", name="Netherbian Lair", id=161, min=20, max=29, zem=1.06, indoor=true }  -- 502 spawns
+add{ short="paludal", name="Paludal Caverns", id=156, min=15, max=20, zem=1.75, indoor=true, hot=20 }  -- 2851 spawns
+add{ short="sseru", name="Sanctus Seru", id=159, min=44, max=60, zem=1.13, indoor=true }  -- 1474 spawns
+add{ short="shadeweaver", name="Shadeweaver's Thicket", id=165, min=7, max=26, zem=1.00, indoor=true }  -- 1336 spawns
+add{ short="shadowhaven", name="Shadow Haven", id=150, min=30, max=55, zem=1.33, indoor=true, city=true }  -- 316 spawns, city median
+add{ short="sharvahl", name="Shar Vahl", id=155, min=2, max=4, zem=1.00, indoor=true, city=true }  -- 674 spawns, city median
+add{ short="ssratemple", name="Ssraeshza Temple", id=162, min=52, max=58, zem=1.33, indoor=true }  -- 1723 spawns
+add{ short="thedeep", name="The Deep", id=164, min=50, max=54, zem=2.00, indoor=true, hot=55 }  -- 788 spawns
+add{ short="thegrey", name="The Grey", id=171, min=44, max=50, zem=2.00, indoor=true }  -- 984 spawns
+add{ short="maiden", name="The Maiden's Eye", id=173, min=48, max=55, zem=1.00, indoor=true }  -- 754 spawns
+add{ short="nexus", name="The Nexus", id=152, min=50, max=50, zem=1.00, indoor=true, cat="hub" }  -- 18 spawns
+add{ short="scarlet", name="The Scarlet Desert", id=175, min=36, max=43, zem=1.00, indoor=true, hot=45 }  -- 1337 spawns
+add{ short="tenebrous", name="The Tenebrous Mountains", id=172, min=34, max=41, zem=1.75, indoor=true }  -- 495 spawns
+add{ short="twilight", name="The Twilight Sea", id=170, min=26, max=39, zem=1.00, indoor=true }  -- 1513 spawns
+add{ short="umbral", name="The Umbral Plains", id=176, min=55, max=58, zem=1.20, indoor=true }  -- 851 spawns
+add{ short="vexthal", name="Vex Thal", id=158, min=58, max=66, zem=1.33, indoor=true }  -- 990 spawns
 
--- Dragons of Norrath zones (Updated)
-table.insert(zones.zones, { fullName = "The Broodlands", shortName = "broodlands", id = 337, zem = { emu = 1.75, live = 1.75, lazarus = 1.75 }, expansion = "DoN", levelmin = 50, levelmax = 65, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 65
-table.insert(zones.zones, { fullName = "Stillmoon Temple", shortName = "stillmoona", id = 338, zem = { emu = 3.00, live = 3.00, lazarus = 3.00 }, expansion = "DoN", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Ascent", shortName = "stillmoonb", id = 339, zem = { emu = 3.00, live = 3.00, lazarus = 3.00 }, expansion = "DoN", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Thundercrest Isles", shortName = "thundercrest", id = 340, zem = { emu = 3.00, live = 3.00, lazarus = 3.00 }, expansion = "DoN", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted ZEM to 3.00
-table.insert(zones.zones, { fullName = "Lavaspinner's Lair", shortName = "delvea", id = 341, zem = { emu = 3.00, live = 3.00, lazarus = 3.00 }, expansion = "DoN", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted ZEM to 3.00, corrected fullName
-table.insert(zones.zones, { fullName = "Tirranun's Delve", shortName = "delveb", id = 342, zem = { emu = 3.00, live = 3.00, lazarus = 3.00 }, expansion = "DoN", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted ZEM to 3.00, corrected fullName
-table.insert(zones.zones, { fullName = "The Accursed Nest", shortName = "thenest", id = 343, zem = { emu = 3.00, live = 3.00, lazarus = 3.00 }, expansion = "DoN", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted ZEM to 3.00
---table.insert(zones.zones, { fullName = "Guild Hall", shortName = "guildhall", id = 345, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "DoN", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
---table.insert(zones.zones, { fullName = "Guild Lobby", shortName = "guildlobby", id = 346, zem = { emu = 1.00, live = 1.00, lazarus = 1.00 }, expansion = "DoN", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned placeholder ID 346
+--===== PoP : 23 zones =====
+exp = "PoP"
 
--- Depths of Darkhollow zones (Updated)
-table.insert(zones.zones, { fullName = "Ruins of Illsalin", shortName = "illsalin", id = 347, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Imperial Bazaar", shortName = "illsalina", id = 348, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Temple of the Korlach", shortName = "illsalinb", id = 349, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Nargilor Pits", shortName = "illsalinc", id = 350, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dreadspire Keep", shortName = "dreadspire", id = 351, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "DoDh", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Hive", shortName = "drachnidhive", id = 354, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Living Larder", shortName = "drachnidhivea", id = 355, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Coven of the Skinwalkers", shortName = "drachnidhiveb", id = 356, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Queen Sendaii's Lair", shortName = "drachnidhivec", id = 357, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Stoneroot Falls", shortName = "westkorlach", id = 358, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "DoDh", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Chambers of Xill", shortName = "westkorlacha", id = 359, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Caverns of the Lost", shortName = "westkorlachb", id = 360, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Lair of the Korlach", shortName = "westkorlachc", id = 361, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Undershore", shortName = "eastkorlach", id = 362, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "DoDh", levelmin = 1, levelmax = 75, hotzone = true, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 75
-table.insert(zones.zones, { fullName = "Snarlstone Dens", shortName = "eastkorlacha", id = 363, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Shadowspine", shortName = "shadowspine", id = 364, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Corathus Creep", shortName = "corathus", id = 365, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "DoDh", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sporali Caverns", shortName = "corathusa", id = 366, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Corathus Lair", shortName = "corathusb", id = 367, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Shadowed Grove", shortName = "nektulosa", id = 368, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "DoDh", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="pofire", name="Doomfire, The Burning Lands", id=217, min=65, max=68, zem=3.00, indoor=true }  -- 1037 spawns
+add{ short="potactics", name="Drunder, Fortress of Zek", id=214, min=60, max=69, zem=2.75, indoor=true, hot=65 }  -- 769 spawns
+add{ short="poair", name="Eryslai, the Kingdom of Wind", id=215, min=65, max=68, zem=2.75, indoor=true }  -- 489 spawns
+add{ short="hohonora", name="Halls of Honor", id=211, min=61, max=66, zem=2.75, indoor=true }  -- 495 spawns
+add{ short="nightmareb", name="Lair of Terris Thule", id=221, min=61, max=64, zem=2.35, indoor=true }  -- 37 spawns
+add{ short="podisease", name="Plane of Disease", id=205, min=51, max=58, zem=1.58, indoor=true }  -- 697 spawns
+add{ short="poinnovation", name="Plane of Innovation", id=206, min=50, max=57, zem=1.58, indoor=true, hot=55 }  -- 561 spawns
+add{ short="pojustice", name="Plane of Justice", id=201, min=47, max=55, zem=1.58, indoor=true }  -- 800 spawns
+add{ short="ponightmare", name="Plane of Nightmare", id=204, min=54, max=60, zem=1.58, indoor=true }  -- 645 spawns
+add{ short="postorms", name="Plane of Storms", id=210, min=58, max=63, zem=2.35, indoor=true }  -- 1120 spawns
+add{ short="potimea", name="Plane of Time (A)", id=219, min=62, max=62, zem=0.40, indoor=true }  -- 251 spawns
+add{ short="potimeb", name="Plane of Time (B)", id=223, min=67, max=70, zem=2.75, indoor=true }  -- 380 spawns
+add{ short="potorment", name="Plane of Torment", id=207, min=59, max=65, zem=2.75, indoor=true }  -- 379 spawns
+add{ short="potranquility", name="Plane of Tranquility", id=203, min=46, max=60, zem=1.00, indoor=true, cat="hub" }  -- 76 spawns
+add{ short="povalor", name="Plane of Valor", id=208, min=61, max=66, zem=2.35, indoor=true }  -- 377 spawns
+add{ short="powar", name="Plane of War", id=213, zem=1.00, indoor=true }  -- no spawn data
+add{ short="powater", name="Reef of Coirnav", id=216, min=65, max=68, zem=3.00 }  -- 299 spawns
+add{ short="codecay", name="Ruins of Lxanvom", id=200, min=61, max=62, zem=2.35, indoor=true }  -- 1025 spawns
+add{ short="solrotower", name="Solusek Ro's Tower", id=212, min=61, max=70, zem=2.75, indoor=true }  -- 561 spawns
+add{ short="poearthb", name="Stronghold of the Twelve", id=222, min=65, max=68, zem=3.00, indoor=true }  -- 92 spawns
+add{ short="hohonorb", name="Temple of Marr (A)", id=220, min=61, max=68, zem=2.75, indoor=true }  -- 58 spawns
+add{ short="bothunder", name="Torden, The Bastion of Thunder", id=209, min=61, max=64, zem=2.75, indoor=true, hot=65 }  -- 790 spawns
+add{ short="poeartha", name="Vegarlson, The Earthen Badlands", id=218, min=63, max=66, zem=3.00, indoor=true }  -- 316 spawns
 
--- Prophecy of Ro zones (Updated)
-table.insert(zones.zones, { fullName = "Arcstone", shortName = "arcstone", id = 369, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Relic", shortName = "relic", id = 370, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Skylance", shortName = "skylance", id = 371, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Devastation", shortName = "devastation", id = 372, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Seething Wall", shortName = "devastationa", id = 373, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sverag, Stronghold of Rage", shortName = "rage", id = 374, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Razorthorn, Tower of Sullon Zek", shortName = "ragea", id = 375, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "PoR", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Root of Ro", shortName = "takishruinsa", id = 377, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Elddar Forest", shortName = "elddar", id = 378, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Tunare's Shrine", shortName = "elddara", id = 379, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "PoR", levelmin = 60, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Theater of Blood", shortName = "theater", id = 380, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "PoR", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Deathknell, Tower of Dissonance", shortName = "theatera", id = 381, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "PoR", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Academy of Arcane Sciences", shortName = "freeportacademy", id = 385, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "PoR", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Temple of Marr (B)", shortName = "freeporttemple", id = 386, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "PoR", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Freeport Militia House", shortName = "freeportmilitia", id = 387, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "PoR", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Arena", shortName = "freeportarena", id = 388, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "PoR", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "City Hall", shortName = "freeportcityhall", id = 389, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "PoR", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Theater", shortName = "freeporttheater", id = 390, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "PoR", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Hall of Truth", shortName = "freeporthall", id = 391, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "PoR", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+--===== LoY : 5 zones =====
+exp = "LoY"
 
--- The Serpent's Spine zones (Updated)
-table.insert(zones.zones, { fullName = "Crescent Reach", shortName = "crescent", id = 394, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "TSS", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Blightfire Moors", shortName = "moors", id = 395, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TSS", levelmin = 45, levelmax = 65, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmax to 65
-table.insert(zones.zones, { fullName = "Stone Hive", shortName = "stonehive", id = 396, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TSS", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Goru`kar Mesa", shortName = "mesa", id = 397, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TSS", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Blackfeather Roost", shortName = "roost", id = 398, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TSS", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Steppes", shortName = "steppes", id = 399, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TSS", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Icefall Glacier", shortName = "icefall", id = 400, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TSS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Valdeholm", shortName = "valdeholm", id = 401, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TSS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Frostcrypt, Throne of the Shade King", shortName = "frostcrypt", id = 402, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "TSS", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sunderock Springs", shortName = "sunderock", id = 403, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TSS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Vergalid Mines", shortName = "vergalid", id = 404, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TSS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Direwind Cliffs", shortName = "direwind", id = 405, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TSS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Ashengate, Reliquary of the Scale", shortName = "ashengate", id = 406, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "TSS", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="nadox", name="Crypt of Nadox", id=227, min=47, max=57, zem=1.50, indoor=true }  -- 666 spawns
+add{ short="dulak", name="Dulak's Harbor", id=225, min=38, max=48, zem=2.00, indoor=true, hot=45 }  -- 764 spawns
+add{ short="gunthak", name="Gulf of Gunthak", id=224, min=33, max=43, zem=1.50, indoor=true }  -- 847 spawns
+add{ short="hatesfury", name="Hate's Fury, The Scorned Maiden", id=228, min=53, max=56, zem=2.00 }  -- 365 spawns
+add{ short="torgiran", name="Torgiran Mines", id=226, min=46, max=54, zem=1.13, indoor=true }  -- 491 spawns
 
--- The Buried Sea zones (Updated)
-table.insert(zones.zones, { fullName = "Katta Castrum", shortName = "kattacastrum", id = 416, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "TBS", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Thalassius, the Coral Keep", shortName = "thalassius", id = 417, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Jewel of Atiiki", shortName = "atiiki", id = 418, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Zhisza, the Shissar Sanctuary", shortName = "zhisza", id = 419, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TBS", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Silyssar, New Chelsith", shortName = "silyssar", id = 420, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Solteris, the Throne of Ro", shortName = "solteris", id = 421, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "TBS", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Barren Coast", shortName = "barren", id = 422, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Buried Sea", shortName = "buriedsea", id = 423, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Jardel's Hook", shortName = "jardelshook", id = 424, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Monkey Rock", shortName = "monkeyrock", id = 425, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TSS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Corrected expansion to TBS, matches
-table.insert(zones.zones, { fullName = "Suncrest Isle", shortName = "suncrest", id = 426, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Deadbone Reef", shortName = "deadbone", id = 427, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Blacksail Folly", shortName = "blacksail", id = 428, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Maiden's Grave", shortName = "maidensgrave", id = 429, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Redfeather Isle", shortName = "redfeather", id = 430, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Open Sea (A)", shortName = "shipmvp", id = 431, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Open Sea (B)", shortName = "shipmvu", id = 432, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Open Sea (C)", shortName = "shippvu", id = 433, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Open Sea (D)", shortName = "shipuvu", id = 434, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Open Sea (E)", shortName = "shipmvm", id = 435, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBS", levelmin = 55, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+--===== LDoN : 48 zones =====
+exp = "LDoN"
 
--- Secrets of Faydwer zones (Updated)
-table.insert(zones.zones, { fullName = "Fortress Mechanotus", shortName = "mechanotus", id = 436, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoF", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Meldrath's Majestic Mansion", shortName = "mansion", id = 437, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Steam Factory", shortName = "steamfactory", id = 438, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "S.H.I.P. Workshop", shortName = "shipworkshop", id = 439, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Gyrospire Beza", shortName = "gyrospireb", id = 440, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Gyrospire Zeka", shortName = "gyrospirez", id = 441, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Dragonscale Hills", shortName = "dragonscale", id = 442, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoF", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Loping Plains", shortName = "lopingplains", id = 443, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoF", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Hills of Shade", shortName = "hillsofshade", id = 444, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoF", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Bloodmoon Keep", shortName = "bloodmoon", id = 445, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Crystallos, Lair of the Awakened", shortName = "crystallos", id = 446, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Mechamatic Guardian", shortName = "guardian", id = 447, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Crypt of Shade", shortName = "cryptofshade", id = 449, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Deepscar's Den", shortName = "dragonscaleb", id = 451, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="gukh", name="The Accursed Sanctuary", id=264, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmch", name="The Aisles of Blood", id=268, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="gukc", name="The Ancient Aqueducts", id=239, min=15, max=75, zem=1.50 }  -- scales; adventure band
+add{ short="taki", name="The Antiquated Palace", id=270, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="ruji", name="The Arena of Chance", id=269, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmcc", name="The Asylum of Invoked Stone", id=243, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="takg", name="The Balancing Chamber", id=261, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="rujj", name="The Barracks of War", id=273, min=15, max=75, zem=1.50 }  -- scales; adventure band
+add{ short="rujh", name="The Blazing Forge", id=265, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="ruja", name="The Bloodied Quarries", id=230, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="guka", name="The Cauldron of Lost Souls", id=229, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmcg", name="The Cesspits of Putrescence", id=263, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmcd", name="The Chambers of Eternal Affliction", id=248, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="gukf", name="The Chapel of the Witnesses", id=254, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmcb", name="The Dreary Grotto", id=238, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="gukb", name="The Drowning Crypt", id=234, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="ruje", name="The Drudge Hollows", id=250, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="takc", name="The Fading Temple", id=241, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="guke", name="The Foreboding Prison", id=249, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mirf", name="The Forgotten Wastes", id=257, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmca", name="The Forlorn Caverns", id=233, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="rujf", name="The Fortified Lair of the Taskmasters", id=255, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mire", name="The Frosted Halls", id=252, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="rujd", name="The Gladiator Pits", id=245, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mirj", name="The Grand Library", id=275, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmci", name="The Halls of Sanguinary Rites", id=272, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="rujb", name="The Halls of War", id=235, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mirg", name="The Heart of the Menagerie", id=262, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="rujg", name="The Hidden Vale", id=260, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mird", name="The Hushed Banquet", id=247, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmcj", name="The Infernal Sanctuary", id=276, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mirb", name="The Maw of the Menagerie", id=237, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mirh", name="The Morbid Laboratory", id=267, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="gukd", name="The Mushroom Grove", id=244, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="takj", name="The Prismatic Corridors", id=274, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmcf", name="The Ritualistic Summoning Grounds", id=258, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="take", name="The River of Recollection", id=251, min=15, max=75, zem=1.50 }  -- scales; adventure band
+add{ short="gukg", name="The Root Garden", id=259, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="takd", name="The Royal Observatory", id=246, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="takf", name="The Sandfall Corridors", id=256, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mmce", name="The Sepulcher of the Damned", id=253, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="takb", name="The Shifting Tower", id=236, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mira", name="The Silent Gallery", id=232, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="mirc", name="The Spider Den", id=242, min=15, max=75, zem=1.50 }  -- scales; adventure band
+add{ short="taka", name="The Sunken Library", id=231, min=15, max=75, zem=1.50 }  -- scales; adventure band
+add{ short="takh", name="The Sweeping Tides", id=266, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="miri", name="The Theater of Imprisoned Horrors", id=271, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
+add{ short="rujc", name="The Wind Bridges", id=240, min=15, max=75, zem=1.50, indoor=true }  -- scales; adventure band
 
--- Seeds of Destruction zones (Updated)
-table.insert(zones.zones, { fullName = "Old Field of Scale", shortName = "oldfieldofbone", id = 452, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Kaesora Library", shortName = "oldkaesoraa", id = 453, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 60
-table.insert(zones.zones, { fullName = "Hatchery Wing", shortName = "oldkaesorab", id = 454, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 60
-table.insert(zones.zones, { fullName = "Old Kurn's Tower", shortName = "oldkurn", id = 455, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Adjusted levelmin to 60
-table.insert(zones.zones, { fullName = "Bloody Kithicor", shortName = "oldkithicor", id = 456, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Old Commonlands", shortName = "oldcommons", id = 457, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Old Highpass Hold", shortName = "oldhighpass", id = 458, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned placeholder ID 458
-table.insert(zones.zones, { fullName = "The Void (A)", shortName = "thevoida", id = 459, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Void (B)", shortName = "thevoidb", id = 460, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Void (C)", shortName = "thevoidc", id = 461, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Void (D)", shortName = "thevoidd", id = 462, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Void (E)", shortName = "thevoide", id = 463, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Void (F)", shortName = "thevoidf", id = 464, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Void (G)", shortName = "thevoidg", id = 465, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Oceangreen Hills", shortName = "oceangreenhills", id = 466, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Oceangreen Village", shortName = "oceangreenvillage", id = 467, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "SoD", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Old Blackburrow", shortName = "oldblackburrow", id = 468, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Temple of Bertoxxulous", shortName = "bertoxtemple", id = 469, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Korafax, Home of the Riders", shortName = "discord", id = 470, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Citadel of the Worldslayer", shortName = "discordtower", id = 471, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "SoD", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Old Bloodfields", shortName = "oldbloodfield", id = 472, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Precipice of War", shortName = "precipiceofwar", id = 473, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "SoD", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "City of Dranik", shortName = "olddranik", id = 474, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Toskirakk", shortName = "toskirakk", id = 475, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Korascian Warrens", shortName = "korascian", id = 476, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "SoD", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Rathe Council Chambers", shortName = "rathechamber", id = 477, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "SoD", levelmin = 65, levelmax = 75, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Field of Scale", shortName = "oldfieldofboneb", id = 478, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "SoD", levelmin = 50, levelmax = 70, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+--===== GoD : 21 zones =====
+exp = "GoD"
 
--- Underfoot zones (Updated)
-table.insert(zones.zones, { fullName = "Brell's Rest", shortName = "brellsrest", id = 480, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "UF", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Fungal Forest", shortName = "fungalforest", id = 481, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "UF", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Underquarry", shortName = "underquarry", id = 482, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "UF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Cooling Chamber", shortName = "coolingchamber", id = 483, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "UF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Kernagir, The Shining City", shortName = "shiningcity", id = 484, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "UF", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Arthicrex", shortName = "arthicrex", id = 485, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "UF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Foundation", shortName = "foundation", id = 486, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "UF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Lichen Creep", shortName = "lichencreep", id = 487, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "UF", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Pellucid Grotto", shortName = "pellucid", id = 488, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "UF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Volska's Husk", shortName = "stonesnake", id = 489, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "UF", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Brell's Temple", shortName = "brellstemple", id = 490, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "UF", levelmin = 65, levelmax = 80, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Convorteum", shortName = "convorteum", id = 491, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "UF", levelmin = 65, levelmax = 80, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Brell's Arena", shortName = "brellsarena", id = 492, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "UF", levelmin = 65, levelmax = 80, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
---table.insert(zones.zones, { fullName = "Ngreth's Den", shortName = "crafthalls", id = 495, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "UF", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned placeholder ID 495
-table.insert(zones.zones, { fullName = "Wedding Chapel", shortName = "weddingchapel", id = 493, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "UF", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Lair of the Fallen", shortName = "dragoncrypt", id = 494, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "UF", levelmin = 65, levelmax = 80, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="abysmal", name="Abysmal Sea", id=279, min=70, max=70, zem=1.00 }  -- 265 spawns
+add{ short="barindu", name="Barindu, Hanging Gardens", id=283, min=47, max=62, zem=2.00, hot=60 }  -- 623 spawns
+add{ short="ferubi", name="Ferubi, Forgotten Temple of Taelosia", id=284, min=61, max=66, zem=2.00, indoor=true }  -- 1331 spawns
+add{ short="ikkinz", name="Ikkinz, Chambers of Destruction", id=294, min=62, max=67, zem=1.50 }  -- 503 spawns
+add{ short="inktuta", name="Inktu`Ta, The Unmasked Chapel", id=296, min=66, max=70, zem=1.75 }  -- 98 spawns
+add{ short="kodtaz", name="Kod'Taz, Broken Trial Grounds", id=293, min=64, max=68, zem=2.50, indoor=true }  -- 693 spawns
+add{ short="natimbi", name="Natimbi, The Broken Shores", id=280, min=44, max=51, zem=1.50 }  -- 762 spawns
+add{ short="qinimi", name="Qinimi, Court of Nihilia", id=281, min=50, max=55, zem=2.00 }  -- 639 spawns
+add{ short="qvic", name="Qvic, Prayer Grounds of Calling", id=295, min=66, max=69, zem=2.00, indoor=true }  -- 1155 spawns
+add{ short="qvicb", name="Qvic, the Hidden Vault", id=299, zem=1.00, emuOnly=true }  -- no spawn data
+add{ short="riwwi", name="Riwwi, Coliseum of Games", id=282, min=47, max=60, zem=2.00, hot=55 }  -- 298 spawns
+add{ short="snlair", name="Sewers of Nihilia, Lair of Trapped Ones", id=286, min=61, max=64, zem=1.50, indoor=true }  -- 209 spawns
+add{ short="snpool", name="Sewers of Nihilia, Pool of Sludge", id=285, min=59, max=62, zem=1.50, indoor=true }  -- 178 spawns
+add{ short="snplant", name="Sewers of Nihilia, Purifying Plant", id=287, min=61, max=65, zem=1.50, indoor=true }  -- 383 spawns
+add{ short="sncrematory", name="Sewers of Nihilia, the Crematory", id=288, min=59, max=62, zem=1.50, indoor=true }  -- 156 spawns
+add{ short="tacvi", name="Tacvi, Seat of the Slaver", id=298, min=1, max=1, zem=1.00 }  -- 1 spawns
+add{ short="tipt", name="Tipt, Treacherous Crags", id=289, min=64, max=66, zem=2.00 }  -- 61 spawns
+add{ short="txevu", name="Txevu, Lair of the Elite", id=297, min=67, max=70, zem=1.75 }  -- 1088 spawns
+add{ short="uqua", name="Uqua, The Ocean God Chantry", id=292, min=67, max=69, zem=2.00 }  -- 62 spawns
+add{ short="vxed", name="Vxed, The Crumbling Caverns", id=290, min=64, max=66, zem=2.00 }  -- 426 spawns
+add{ short="yxtta", name="Yxtta, Pulpit of Exiles", id=291, min=65, max=68, zem=2.00 }  -- 356 spawns
 
--- House of Thule zones (Updated)
-table.insert(zones.zones, { fullName = "The Feerrott (B)", shortName = "feerrott2", id = 700, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "HoT", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "House of Thule", shortName = "thulehouse1", id = 701, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "House of Thule, Upper Floors", shortName = "thulehouse2", id = 702, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Grounds", shortName = "housegarden", id = 703, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "HoT", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Library", shortName = "thulelibrary", id = 704, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Well", shortName = "well", id = 705, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Erudin Burning", shortName = "fallen", id = 706, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "HoT", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Morell's Castle", shortName = "morellcastle", id = 707, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Morell's Tower", shortName = "morelltower", id = 714, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "HoT", levelmin = 65, levelmax = 80, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned placeholder ID 714
-table.insert(zones.zones, { fullName = "Sanctum Somnium", shortName = "somnium", id = 708, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Al`Kabor's Nightmare", shortName = "alkabormare", id = 709, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "HoT", levelmin = 60, levelmax = 75, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Miragul's Nightmare", shortName = "miragulmare", id = 710, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Fear Itself", shortName = "thuledream", id = 711, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "HoT", levelmin = 65, levelmax = 80, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sunrise Hills", shortName = "neighborhood", id = 712, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "HoT", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Miragul's Phylactery", shortName = "phylactery", id = 713, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "HoT", levelmin = 65, levelmax = 75, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+--===== OoW : 31 zones =====
+exp = "OoW"
 
--- Veil of Alaris zones (Updated)
-table.insert(zones.zones, { fullName = "Argath", shortName = "argath", id = 724, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Valley of Lunanyn", shortName = "arelis", id = 725, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "VoA", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sarith City", shortName = "sarithcity", id = 726, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "VoA", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Rubak Oseka", shortName = "rubak", id = 727, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "VoA", levelmin = 70, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Beast's Domain", shortName = "beastdomain", id = 728, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "VoA", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Resplendent Temple", shortName = "resplendent", id = 729, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "VoA", levelmin = 70, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Pillars of Alra", shortName = "pillarsalra", id = 730, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "VoA", levelmin = 70, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Windsong", shortName = "windsong", id = 731, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "VoA", levelmin = 70, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "City of Bronze", shortName = "cityofbronze", id = 732, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "VoA", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sepulcher of Order", shortName = "sepulcher", id = 733, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "VoA", levelmin = 70, levelmax = 85, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "East Sepulcher", shortName = "eastsepulcher", id = 734, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "VoA", levelmin = 70, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "West Sepulcher", shortName = "westsepulcher", id = 735, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "VoA", levelmin = 70, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Shadowed Mount", shortName = "shadowedmount", id = 736, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "VoA", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Palatial Guildhall", shortName = "guildhalllrg", id = 737, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Grand Guild Hall", shortName = "guildhalllrg", id = 752, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned unique ID 752 to resolve duplicate
-table.insert(zones.zones, { fullName = "Greater Guild Hall", shortName = "guildhallsml", id = 738, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "One Bedroom House Interior", shortName = "plhogrinteriors1a1", id = 739, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "One Bedroom House Interior", shortName = "plhogrinteriors1a2", id = 740, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Three Bedroom House Interior", shortName = "plhogrinteriors3a1", id = 741, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Three Bedroom House Interior", shortName = "plhogrinteriors3a2", id = 742, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Three Bedroom House Interior", shortName = "plhogrinteriors3b1", id = 743, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Three Bedroom House Interior", shortName = "plhogrinteriors3b2", id = 744, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "One Bedroom House Interior", shortName = "plhdkeinteriors1a1", id = 745, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "One Bedroom House Interior", shortName = "plhdkeinteriors1a2", id = 746, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "One Bedroom House Interior", shortName = "plhdkeinteriors1a3", id = 747, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Three Bedroom House Interior", shortName = "plhdkeinteriors3a1", id = 748, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Three Bedroom House Interior", shortName = "plhdkeinteriors3a2", id = 749, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Three Bedroom House Interior", shortName = "plhdkeinteriors3a3", id = 750, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Modest Guild Hall", shortName = "guildhall3", id = 751, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "VoA", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="anguish", name="Asylum of Anguish", id=317, min=72, max=74, zem=1.00 }  -- 1773 spawns
+add{ short="dranikcatacombsa", name="Catacombs of Dranik (A)", id=328, min=67, max=67, zem=1.75, indoor=true }  -- 368 spawns
+add{ short="dranikcatacombsb", name="Catacombs of Dranik (B)", id=329, min=67, max=67, zem=1.75, indoor=true }  -- 109 spawns
+add{ short="dranikcatacombsc", name="Catacombs of Dranik (C)", id=330, min=67, max=67, zem=1.75, indoor=true }  -- 179 spawns
+add{ short="dranikhollowsa", name="Dranik's Hollows (A)", id=318, min=66, max=66, zem=1.75 }  -- 94 spawns
+add{ short="dranikhollowsb", name="Dranik's Hollows (B)", id=319, min=66, max=66, zem=1.75 }  -- 92 spawns
+add{ short="dranikhollowsc", name="Dranik's Hollows (C)", id=320, min=66, max=66, zem=1.75 }  -- 100 spawns
+add{ short="draniksscar", name="Dranik's Scar", id=302, min=40, max=50, zem=1.75, indoor=true, hot=45 }  -- 807 spawns
+add{ short="harbingers", name="Harbingers' Spire", id=335, min=53, max=63, zem=2.00 }  -- 247 spawns
+add{ short="provinggrounds", name="Muramite Proving Grounds", id=316, min=70, max=70, zem=2.75, indoor=true, cat="instance" }  -- 814 spawns
+add{ short="chambersa", name="Muramite Proving Grounds (A)", id=304, min=65, max=75, zem=1.00, indoor=true, cat="instance" }  -- 23 spawns
+add{ short="chambersb", name="Muramite Proving Grounds (B)", id=305, min=70, max=80, zem=1.00, indoor=true, cat="instance" }  -- 10 spawns
+add{ short="chambersc", name="Muramite Proving Grounds (C)", id=306, min=55, max=64, zem=1.00, indoor=true, cat="instance" }  -- 47 spawns
+add{ short="chambersd", name="Muramite Proving Grounds (D)", id=307, min=64, max=72, zem=1.00, indoor=true, cat="instance" }  -- 18 spawns
+add{ short="chamberse", name="Muramite Proving Grounds (E)", id=308, min=65, max=72, zem=1.00, indoor=true, cat="instance" }  -- 15 spawns
+add{ short="chambersf", name="Muramite Proving Grounds (F)", id=309, min=70, max=70, zem=1.00, indoor=true, cat="instance" }  -- 70 spawns
+add{ short="causeway", name="Nobles' Causeway", id=303, min=61, max=66, zem=2.25, indoor=true }  -- 661 spawns
+add{ short="riftseekers", name="Riftseekers' Sanctum", id=334, min=71, max=72, zem=3.00 }  -- 697 spawns
+add{ short="draniksewersa", name="Sewers of Dranik (A)", id=331, min=67, max=68, zem=1.75, indoor=true }  -- 130 spawns
+add{ short="draniksewersb", name="Sewers of Dranik (B)", id=332, min=67, max=68, zem=1.75, indoor=true }  -- 161 spawns
+add{ short="draniksewersc", name="Sewers of Dranik (C)", id=333, min=67, max=68, zem=1.75, indoor=true }  -- 162 spawns
+add{ short="bloodfields", name="The Bloodfields", id=301, min=53, max=58, zem=2.00, indoor=true }  -- 485 spawns
+add{ short="dranik", name="The Ruined City of Dranik", id=336, min=64, max=68, zem=1.75, indoor=true }  -- 892 spawns
+add{ short="wallofslaughter", name="Wall of Slaughter", id=300, min=64, max=68, zem=2.50, indoor=true }  -- 715 spawns
 
--- Rain of Fear zones (Updated)
-table.insert(zones.zones, { fullName = "Shard's Landing", shortName = "shardslanding", id = 770, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "RoF", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 770 to avoid conflict
-table.insert(zones.zones, { fullName = "Valley of King Xorbb", shortName = "xorbb", id = 753, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Kael Drakkel: The King's Madness", shortName = "kaelshard", id = 754, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "East Wastes: Zeixshi-Kar's Awakening", shortName = "eastwastesshard", id = 755, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Crystal Caverns: Fragment of Fear", shortName = "crystalshard", id = 756, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Breeding Grounds", shortName = "breedinggrounds", id = 757, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Evantil, the Vile Oak", shortName = "eviltree", id = 758, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Grelleth's Palace, the Chateau of Filth", shortName = "grelleth", id = 759, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Chapterhouse of the Fallen", shortName = "chapterhouse", id = 760, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Chelsith Reborn", shortName = "chelsithreborn", id = 763, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Plane of Shadow", shortName = "poshadow", id = 764, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Heart of Fear: The Threshold", shortName = "heartoffear", id = 765, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "RoF", levelmin = 70, levelmax = 85, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Evantil's Abode", shortName = "phinteriortree", id = 766, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "RoF", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Heart of Fear: The Rebirth", shortName = "heartoffearb", id = 768, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "RoF", levelmin = 70, levelmax = 85, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Heart of Fear: The Epicenter", shortName = "heartoffearc", id = 769, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "RoF", levelmin = 70, levelmax = 85, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Plane of Mischief", shortName = "pomischief", id = 771, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned placeholder ID 771
-table.insert(zones.zones, { fullName = "The Burned Woods", shortName = "burnedwoods", id = 772, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "RoF", levelmin = 65, levelmax = 85, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Assigned placeholder ID 772
+--===== DoN : 8 zones =====
+exp = "DoN"
 
--- Call of the Forsaken zones (Updated)
-table.insert(zones.zones, { fullName = "Bixie Warfront", shortName = "bixiewarfront", id = 773, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "CotF", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 773
-table.insert(zones.zones, { fullName = "The Dead Hills", shortName = "deadhills", id = 774, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "CotF", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 774
-table.insert(zones.zones, { fullName = "Ethernere Tainted West Karana", shortName = "ethernere", id = 775, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "CotF", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 775
-table.insert(zones.zones, { fullName = "The Void (H)", shortName = "thevoidh", id = 776, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "CotF", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 776
-table.insert(zones.zones, { fullName = "Neriak - Fourth Gate", shortName = "neriakd", id = 43, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "CotF", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches, verify ID 43 duplicate
-table.insert(zones.zones, { fullName = "Tower of Rot", shortName = "towerofrot", id = 777, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "CotF", levelmin = 75, levelmax = 90, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 777
-table.insert(zones.zones, { fullName = "Argin-Hiz", shortName = "arginhiz", id = 778, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "CotF", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 778
+add{ short="guildhall", name="Guild Hall", id=345, min=50, max=60, zem=1.00, cat="hub" }  -- 7 spawns
+add{ short="delvea", name="Lavaspinner's Lair", id=341, min=55, max=66, zem=2.95 }  -- 940 spawns
+add{ short="stillmoona", name="Stillmoon Temple", id=338, min=55, max=67, zem=3.00 }  -- 1205 spawns
+add{ short="thenest", name="The Accursed Nest", id=343, min=71, max=73, zem=3.10 }  -- 2882 spawns
+add{ short="stillmoonb", name="The Ascent", id=339, min=62, max=67, zem=3.00 }  -- 868 spawns
+add{ short="broodlands", name="The Broodlands", id=337, min=45, max=55, zem=1.75, indoor=true }  -- 672 spawns
+add{ short="thundercrest", name="Thundercrest Isles", id=340, min=67, max=68, zem=3.05 }  -- 2454 spawns
+add{ short="delveb", name="Tirranun's Delve", id=342, min=55, max=66, zem=2.95 }  -- 776 spawns
 
--- The Darkened Sea zones (Updated)
-table.insert(zones.zones, { fullName = "Arx Mentis", shortName = "arxmentis", id = 786, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "TDS", levelmin = 75, levelmax = 90, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 786
-table.insert(zones.zones, { fullName = "Brother Island", shortName = "brotherisland", id = 787, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TDS", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 787
-table.insert(zones.zones, { fullName = "Katta Castrum: The Deluge", shortName = "kattacastrumb", id = 788, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "TDS", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 788
-table.insert(zones.zones, { fullName = "Combine Dredge", shortName = "dredge", id = 789, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TDS", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 789
-table.insert(zones.zones, { fullName = "Caverns of Endless Song", shortName = "endlesscaverns", id = 790, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TDS", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 790
-table.insert(zones.zones, { fullName = "Thuliasaur Island", shortName = "thuliasaur", id = 791, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TDS", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 791
-table.insert(zones.zones, { fullName = "Degmar, the Lost Castle", shortName = "degmar", id = 792, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TDS", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 792
-table.insert(zones.zones, { fullName = "Tempest Temple", shortName = "tempesttemple", id = 793, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TDS", levelmin = 70, levelmax = 90, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 793
+--===== DoDh : 20 zones =====
+exp = "DoDh"
 
--- The Broken Mirror zones (Updated)
-table.insert(zones.zones, { fullName = "Sul Vius: Demiplane of Life", shortName = "exalted", id = 799, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TBM", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 799
-table.insert(zones.zones, { fullName = "Crypt of Sul", shortName = "cosul", id = 795, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBM", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Ruins of Lxanvom", shortName = "codecayb", id = 796, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "TBM", levelmin = 80, levelmax = 100, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "Sul Vius: Demiplane of Decay", shortName = "exaltedb", id = 797, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "TBM", levelmin = 80, levelmax = 100, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
-table.insert(zones.zones, { fullName = "The Plane of Health", shortName = "pohealth", id = 798, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBM", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Matches
+add{ short="westkorlachb", name="Caverns of the Lost", id=360, min=66, max=68, zem=1.00 }  -- 166 spawns
+add{ short="westkorlacha", name="Chambers of Xill", id=359, min=67, max=70, zem=1.00 }  -- 123 spawns
+add{ short="corathus", name="Corathus Creep", id=365, min=61, max=65, zem=1.00, indoor=true }  -- 1412 spawns
+add{ short="corathusb", name="Corathus Lair", id=367, min=66, max=69, zem=1.00 }  -- 394 spawns
+add{ short="drachnidhiveb", name="Coven of the Skinwalkers", id=356, min=60, max=71, zem=1.00 }  -- 168 spawns
+add{ short="dreadspire", name="Dreadspire Keep", id=351, min=72, max=74, zem=1.00 }  -- 731 spawns
+add{ short="illsalina", name="Imperial Bazaar", id=348, min=71, max=75, zem=1.00, cat="hub" }  -- 8 spawns
+add{ short="westkorlachc", name="Lair of the Korlach", id=361, min=67, max=74, zem=1.00 }  -- 472 spawns
+add{ short="drachnidhivea", name="Living Larder", id=355, min=60, max=71, zem=1.00 }  -- 473 spawns
+add{ short="drachnidhivec", name="Queen Sendaii's Lair", id=357, min=1, max=70, zem=1.00 }  -- 28 spawns
+add{ short="illsalin", name="Ruins of Illsalin", id=347, min=70, max=72, zem=1.00, indoor=true }  -- 298 spawns
+add{ short="nektulosa", name="Shadowed Grove", id=368, min=20, max=27, zem=1.00 }  -- 30 spawns
+add{ short="shadowspine", name="Shadowspine", id=364, min=70, max=74, zem=1.00 }  -- 78 spawns
+add{ short="eastkorlacha", name="Snarlstone Dens", id=363, min=66, max=68, zem=1.00 }  -- 355 spawns
+add{ short="corathusa", name="Sporali Caverns", id=366, min=69, max=71, zem=1.00 }  -- 213 spawns
+add{ short="westkorlach", name="Stoneroot Falls", id=358, min=64, max=70, zem=1.00, hot=70 }  -- 943 spawns
+add{ short="illsalinb", name="Temple of the Korlach", id=349, min=69, max=72, zem=1.00 }  -- 209 spawns
+add{ short="drachnidhive", name="The Hive", id=354, min=66, max=71, zem=1.00, hot=70 }  -- 1476 spawns
+add{ short="illsalinc", name="The Nargilor Pits", id=350, min=70, max=75, zem=1.00 }  -- 252 spawns
+add{ short="eastkorlach", name="Undershore", id=362, min=56, max=67, zem=1.00 }  -- 907 spawns
 
--- Empires of Kunark zones (Updated)
-table.insert(zones.zones, { fullName = "Temple of Droga", shortName = "drogab", id = 801, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "EoK", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 801
-table.insert(zones.zones, { fullName = "Scorched Woods", shortName = "scorchedwoods", id = 802, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "EoK", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 802
-table.insert(zones.zones, { fullName = "Frontier Mountains", shortName = "frontiermtnsb", id = 803, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "EoK", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 803
-table.insert(zones.zones, { fullName = "Gates of Kor-Sha", shortName = "korshaext", id = 804, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "EoK", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 804
-table.insert(zones.zones, { fullName = "Lceanium", shortName = "lceanium", id = 805, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "EoK", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 805
-table.insert(zones.zones, { fullName = "Kor-Sha Laboratory", shortName = "korshaint", id = 806, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "EoK", levelmin = 80, levelmax = 100, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 806
-table.insert(zones.zones, { fullName = "Chardok", shortName = "chardoktwo", id = 807, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "EoK", levelmin = 75, levelmax = 100, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 807
+--===== PoR : 19 zones =====
+exp = "PoR"
 
--- Ring of Scale zones (Updated)
-table.insert(zones.zones, { fullName = "Sathir's Tomb", shortName = "charasisb", id = 817, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoS", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 817
-table.insert(zones.zones, { fullName = "Gorowyn", shortName = "gorowyn", id = 818, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "RoS", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 818, corrected hotzone to false
-table.insert(zones.zones, { fullName = "Howling Stones", shortName = "charasistwo", id = 819, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "RoS", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 819
-table.insert(zones.zones, { fullName = "Skyfire Mountains", shortName = "skyfiretwo", id = 820, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "RoS", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 820
-table.insert(zones.zones, { fullName = "The Overthere", shortName = "overtheretwo", id = 821, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "RoS", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 821
-table.insert(zones.zones, { fullName = "Veeshan's Peak", shortName = "veeshantwo", id = 822, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "RoS", levelmin = 85, levelmax = 105, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 822
+add{ short="freeportacademy", name="Academy of Arcane Sciences", id=385, min=67, max=67, zem=1.00, indoor=true }  -- 1 spawns
+add{ short="arcstone", name="Arcstone", id=369, min=65, max=69, zem=1.00, hot=70 }  -- 259 spawns
+add{ short="freeportarena", name="Arena", id=388, min=80, max=80, zem=1.00, cat="arena" }  -- 1 spawns
+add{ short="freeportcityhall", name="City Hall", id=389, min=69, max=72, zem=1.00 }  -- 70 spawns
+add{ short="theatera", name="Deathknell, Tower of Dissonance", id=381, min=80, max=80, zem=1.00, indoor=true }  -- 10 spawns
+add{ short="freeportmilitia", name="Freeport Militia House", id=387, min=69, max=71, zem=1.00, indoor=true, cat="hub" }  -- 22 spawns
+add{ short="freeporthall", name="Hall of Truth", id=391, min=69, max=71, zem=1.00, indoor=true }  -- 74 spawns
+add{ short="ragea", name="Razorthorn, Tower of Sullon Zek", id=375, min=70, max=72, zem=1.00, indoor=true }  -- 95 spawns
+add{ short="relic", name="Relic", id=370, min=70, max=72, zem=1.00 }  -- 213 spawns
+add{ short="skylance", name="Skylance", id=371, min=65, max=72, zem=1.00, indoor=true }  -- 126 spawns
+add{ short="rage", name="Sverag, Stronghold of Rage", id=374, min=72, max=74, zem=1.00 }  -- 206 spawns
+add{ short="freeporttemple", name="Temple of Marr (B)", id=386, zem=1.00, emuOnly=true }  -- no spawn data
+add{ short="devastation", name="The Devastation", id=372, min=49, max=72, zem=1.00, indoor=true }  -- 1138 spawns
+add{ short="elddar", name="The Elddar Forest", id=378, min=69, max=73, zem=1.00 }  -- 381 spawns
+add{ short="takishruinsa", name="The Root of Ro", id=377, min=68, max=70, zem=1.00, indoor=true }  -- 28 spawns
+add{ short="devastationa", name="The Seething Wall", id=373, min=70, max=73, zem=1.00, indoor=true }  -- 69 spawns
+add{ short="freeporttheater", name="Theater", id=390, min=67, max=69, zem=1.00 }  -- 42 spawns
+add{ short="theater", name="Theater of Blood", id=380, min=73, max=75, zem=1.00, indoor=true }  -- 332 spawns
+add{ short="elddara", name="Tunare's Shrine", id=379, min=70, max=71, zem=1.00, indoor=true }  -- 61 spawns
 
--- The Burning Lands zones (Updated)
-table.insert(zones.zones, { fullName = "Plane of Smoke", shortName = "trialsofsmoke", id = 824, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBL", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 824
-table.insert(zones.zones, { fullName = "Stratos: Zephyr's Flight", shortName = "stratos", id = 825, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBL", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 825
-table.insert(zones.zones, { fullName = "Aalishai: Palace of Embers", shortName = "aalishai", id = 826, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBL", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 826
-table.insert(zones.zones, { fullName = "Empyr: Realms of Ash", shortName = "empyr", id = 827, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBL", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 827
-table.insert(zones.zones, { fullName = "Esianti: Palace of the Winds", shortName = "esianti", id = 828, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "TBL", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 828
-table.insert(zones.zones, { fullName = "Mearatas: The Stone Demesne", shortName = "mearatas", id = 829, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "TBL", levelmin = 85, levelmax = 105, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 829
-table.insert(zones.zones, { fullName = "The Chamber of Tears", shortName = "chamberoftears", id = 830, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "TBL", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 830
-table.insert(zones.zones, { fullName = "Gnome Memorial Mountain", shortName = "gnomemtn", id = 831, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TBL", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 831
--- Gnome Memorial Mountain zone
---table.insert(zones.zones, { fullName = "Gnome Memorial Mountain", shortName = "gnomemtn", id = 787, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "TBL", levelmin = 80, levelmax = 105, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false }) -- indoor: EQEmu, outdoor mountain; ZEM emu/live placeholder, verify
--- Note: Only first set provided (fullName, shortName, id). zem, levelmin, levelmax, hotzone, city use placeholders based on EQEmu/Live data. lazarus set to emu. indoor from EQEmu. RoS revamped zones (charasisb, charasistwo, skyfiretwo, overtheretwo, veeshantwo) may duplicate Kunark; verify if Sathir's Tomb (id=789) and Howling Stones (id=813) are same zone. Verify all placeholders with SotB data. Verify with run to zone script (${Zone.Outdoor}, ${Zone.Type}). Server detection via mq.TLO.EverQuest.Server() (sotb->EMU).
+--===== TSS : 13 zones =====
+exp = "TSS"
 
--- Torment of Velious zones (Updated)
-table.insert(zones.zones, { fullName = "The Eastern Wastes", shortName = "eastwastestwo", id = 831, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "ToV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 831
-table.insert(zones.zones, { fullName = "The Tower of Frozen Shadow", shortName = "frozenshadowtwo", id = 832, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "ToV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 832
-table.insert(zones.zones, { fullName = "The Ry`Gorr Mines", shortName = "crystaltwoa", id = 833, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "ToV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 833
-table.insert(zones.zones, { fullName = "The Great Divide", shortName = "greatdividetwo", id = 834, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "ToV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 834
-table.insert(zones.zones, { fullName = "Velketor's Labyrinth", shortName = "velketortwo", id = 835, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "ToV", levelmin = 90, levelmax = 110, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 835
-table.insert(zones.zones, { fullName = "Kael Drakkel", shortName = "kaeltwo", id = 836, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "ToV", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 836
-table.insert(zones.zones, { fullName = "Crystal Caverns", shortName = "crystaltwob", id = 837, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "ToV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 837
+add{ short="ashengate", name="Ashengate, Reliquary of the Scale", id=406, min=75, max=78, zem=1.00, indoor=true }  -- 314 spawns
+add{ short="roost", name="Blackfeather Roost", id=398, min=55, max=60, zem=1.00, indoor=true, hot=60 }  -- 296 spawns
+add{ short="moors", name="Blightfire Moors", id=395, min=22, max=35, zem=1.00, indoor=true, hot=30 }  -- 675 spawns
+add{ short="crescent", name="Crescent Reach", id=394, min=4, max=70, zem=1.00, indoor=true }  -- 725 spawns
+add{ short="direwind", name="Direwind Cliffs", id=405, min=70, max=76, zem=1.00, indoor=true, hot=75 }  -- 553 spawns
+add{ short="frostcrypt", name="Frostcrypt, Throne of the Shade King", id=402, min=75, max=78, zem=1.00, indoor=true }  -- 400 spawns
+add{ short="mesa", name="Goru`kar Mesa", id=397, min=41, max=53, zem=1.00, indoor=true }  -- 617 spawns
+add{ short="icefall", name="Icefall Glacier", id=400, min=69, max=76, zem=1.00, indoor=true }  -- 560 spawns
+add{ short="stonehive", name="Stone Hive", id=396, min=31, max=40, zem=1.00, indoor=true, hot=35 }  -- 300 spawns
+add{ short="sunderock", name="Sunderock Springs", id=403, min=64, max=71, zem=1.00, indoor=true }  -- 562 spawns
+add{ short="steppes", name="The Steppes", id=399, min=62, max=67, zem=1.00, indoor=true }  -- 388 spawns
+add{ short="valdeholm", name="Valdeholm", id=401, min=72, max=77, zem=1.00, indoor=true, hot=80 }  -- 657 spawns
+add{ short="vergalid", name="Vergalid Mines", id=404, min=70, max=77, zem=1.00, indoor=true }  -- 416 spawns
 
--- Claws of Veeshan zones (Updated)
-table.insert(zones.zones, { fullName = "The Sleeper's Tomb", shortName = "sleepertwo", id = 838, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "CoV", levelmin = 90, levelmax = 110, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 838
-table.insert(zones.zones, { fullName = "Dragon Necropolis", shortName = "necropolistwo", id = 839, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "CoV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 839
-table.insert(zones.zones, { fullName = "Cobalt Scar", shortName = "cobaltscartwo", id = 840, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "CoV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 840
-table.insert(zones.zones, { fullName = "The Western Wastes", shortName = "westwastestwo", id = 841, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "CoV", levelmin = 85, levelmax = 110, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 841
-table.insert(zones.zones, { fullName = "Skyshrine", shortName = "skyshrinetwo", id = 842, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "CoV", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 842
-table.insert(zones.zones, { fullName = "The Temple of Veeshan", shortName = "templeveeshantwo", id = 843, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "CoV", levelmin = 90, levelmax = 110, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 843
+--===== TBS : 20 zones =====
+exp = "TBS"
 
--- Terror of Luclin zones (Updated)
-table.insert(zones.zones, { fullName = "Maiden's Eye", shortName = "maidentwo", id = 851, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "ToL", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 851
-table.insert(zones.zones, { fullName = "Umbral Plains", shortName = "umbraltwo", id = 852, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "ToL", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 852
-table.insert(zones.zones, { fullName = "Ka Vethan", shortName = "akhevatwo", id = 853, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "ToL", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 853
-table.insert(zones.zones, { fullName = "Vex Thal", shortName = "vexthaltwo", id = 854, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "ToL", levelmin = 95, levelmax = 115, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 854
-table.insert(zones.zones, { fullName = "Shadow Valley", shortName = "shadowvalley", id = 855, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "ToL", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 855
-table.insert(zones.zones, { fullName = "Basilica of Adumbration", shortName = "basilica", id = 856, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "ToL", levelmin = 95, levelmax = 115, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 856
-table.insert(zones.zones, { fullName = "Bloodfalls", shortName = "bloodfalls", id = 857, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "ToL", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 857
-table.insert(zones.zones, { fullName = "Coterie Chambers", shortName = "maidenhouseint", id = 858, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "ToL", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 858
+add{ short="barren", name="Barren Coast", id=422, min=53, max=64, zem=1.00, indoor=true, hot=65 }  -- 462 spawns
+add{ short="blacksail", name="Blacksail Folly", id=428, min=74, max=76, zem=1.00, indoor=true }  -- 113 spawns
+add{ short="deadbone", name="Deadbone Reef", id=427, min=72, max=75, zem=1.00, indoor=true }  -- 148 spawns
+add{ short="jardelshook", name="Jardel's Hook", id=424, min=74, max=77, zem=1.00, indoor=true }  -- 124 spawns
+add{ short="atiiki", name="Jewel of Atiiki", id=418, min=73, max=75, zem=1.00, indoor=true, hot=75 }  -- 491 spawns
+add{ short="kattacastrum", name="Katta Castrum", id=416, min=73, max=75, zem=1.00, indoor=true }  -- 839 spawns
+add{ short="maidensgrave", name="Maiden's Grave", id=429, min=70, max=72, zem=1.00, indoor=true }  -- 138 spawns
+add{ short="monkeyrock", name="Monkey Rock", id=425, min=64, max=66, zem=1.00, indoor=true }  -- 103 spawns
+add{ short="redfeather", name="Redfeather Isle", id=430, min=68, max=72, zem=1.00, indoor=true }  -- 118 spawns
+add{ short="silyssar", name="Silyssar, New Chelsith", id=420, min=76, max=79, zem=1.00, indoor=true, hot=80 }  -- 487 spawns
+add{ short="solteris", name="Solteris, the Throne of Ro", id=421, min=75, max=76, zem=1.00, indoor=true }  -- 48 spawns
+add{ short="suncrest", name="Suncrest Isle", id=426, min=74, max=76, zem=1.00, indoor=true }  -- 128 spawns
+add{ short="thalassius", name="Thalassius, the Coral Keep", id=417, min=73, max=76, zem=1.00, indoor=true }  -- 287 spawns
+add{ short="buriedsea", name="The Buried Sea", id=423, min=68, max=76, zem=1.00, indoor=true, hot=75 }  -- 876 spawns
+add{ short="shipmvp", name="The Open Sea (A)", id=431, min=73, max=76, zem=1.00, indoor=true }  -- 62 spawns
+add{ short="zhisza", name="Zhisza, the Shissar Sanctuary", id=419, min=75, max=78, zem=1.00, indoor=true }  -- 194 spawns
 
--- Night of Shadows zones (Updated)
-table.insert(zones.zones, { fullName = "Ruins of Shadow Haven", shortName = "shadowhaventwo", id = 859, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "NoS", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 859
-table.insert(zones.zones, { fullName = "Shar Vahl, Divided", shortName = "sharvahltwo", id = 860, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "NoS", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 860
-table.insert(zones.zones, { fullName = "Paludal Caverns", shortName = "paludaltwo", id = 861, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "NoS", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 861
-table.insert(zones.zones, { fullName = "Shadeweaver's Tangle", shortName = "shadeweavertwo", id = 862, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "NoS", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 862
-table.insert(zones.zones, { fullName = "Darklight Caverns", shortName = "darklightcaverns", id = 863, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "NoS", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 863
-table.insert(zones.zones, { fullName = "Deepshade", shortName = "deepshade", id = 864, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "NoS", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 864
-table.insert(zones.zones, { fullName = "Firefall Pass", shortName = "firefallpass", id = 865, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "NoS", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 865
-table.insert(zones.zones, { fullName = "Hollowshade Moor", shortName = "hollowshadetwo", id = 866, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "NoS", levelmin = 90, levelmax = 115, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 866
+--===== SoF : 14 zones =====
+exp = "SoF"
 
--- Laurion's Song zones (Updated)
-table.insert(zones.zones, { fullName = "Laurion Inn", shortName = "laurioninn", id = 867, zem = { emu = 1.00, live = "1.00", lazarus = 1.00 }, expansion = "LS", levelmin = 1, levelmax = 100, hotzone = false, city = true, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 867
-table.insert(zones.zones, { fullName = "Timorous Falls", shortName = "timorousfalls", id = 868, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "LS", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 868
-table.insert(zones.zones, { fullName = "Ankexfen Keep", shortName = "ankexfen", id = 869, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "LS", levelmin = 100, levelmax = 120, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 869
-table.insert(zones.zones, { fullName = "Moors of Nokk", shortName = "moorsofnokk", id = 870, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "LS", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 870
-table.insert(zones.zones, { fullName = "Unkempt Woods", shortName = "unkemptwoods", id = 871, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "LS", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 871
-table.insert(zones.zones, { fullName = "The Hero's Forge", shortName = "herosforge", id = 872, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "LS", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 872
-table.insert(zones.zones, { fullName = "Pal'Lomen", shortName = "pallomen", id = 873, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "LS", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 873
+add{ short="bloodmoon", name="Bloodmoon Keep", id=445, min=80, max=81, zem=1.00, indoor=true }  -- 276 spawns
+add{ short="cryptofshade", name="Crypt of Shade", id=449, zem=1.00 }  -- no spawn data
+add{ short="crystallos", name="Crystallos, Lair of the Awakened", id=446, min=82, max=82, zem=1.00 }  -- 253 spawns
+add{ short="dragonscaleb", name="Deepscar's Den", id=451, min=83, max=83, zem=1.50, indoor=true }  -- 1 spawns
+add{ short="dragonscale", name="Dragonscale Hills", id=442, min=68, max=80, zem=1.00, indoor=true }  -- 698 spawns
+add{ short="mechanotus", name="Fortress Mechanotus", id=436, min=78, max=80, zem=1.00, indoor=true, hot=80 }  -- 949 spawns
+add{ short="gyrospireb", name="Gyrospire Beza", id=440, min=79, max=82, zem=1.00, indoor=true }  -- 193 spawns
+add{ short="gyrospirez", name="Gyrospire Zeka", id=441, min=80, max=83, zem=1.00, indoor=true, hot=85 }  -- 204 spawns
+add{ short="hillsofshade", name="Hills of Shade", id=444, min=79, max=83, zem=1.00, indoor=true }  -- 629 spawns
+add{ short="lopingplains", name="Loping Plains", id=443, min=75, max=79, zem=1.00, indoor=true }  -- 575 spawns
+add{ short="mansion", name="Meldrath's Majestic Mansion", id=437, min=81, max=83, zem=1.00, indoor=true, hot=85 }  -- 389 spawns
+add{ short="shipworkshop", name="S.H.I.P. Workshop", id=439, min=80, max=83, zem=1.00, indoor=true }  -- 429 spawns
+add{ short="guardian", name="The Mechamatic Guardian", id=447, min=78, max=82, zem=1.00 }  -- 310 spawns
+add{ short="steamfactory", name="The Steam Factory", id=438, min=81, max=83, zem=1.00, indoor=true }  -- 707 spawns
 
--- The Outer Brood zones (Updated)
-table.insert(zones.zones, { fullName = "Hodstock Hills", shortName = "hodstock", id = 876, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "ToB", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 876
-table.insert(zones.zones, { fullName = "The Theater of Eternity", shortName = "toe", id = 877, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "ToB", levelmin = 100, levelmax = 120, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 877
-table.insert(zones.zones, { fullName = "Aureate Covert", shortName = "aureatecovert", id = 878, zem = { emu = 1.75, live = "0.90", lazarus = 1.75 }, expansion = "ToB", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = false, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 878
-table.insert(zones.zones, { fullName = "The Harbinger's Cradle", shortName = "harbingerscradle", id = 879, zem = { emu = 1.50, live = "0.75", lazarus = 1.50 }, expansion = "ToB", levelmin = 95, levelmax = 120, hotzone = true, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 879
-table.insert(zones.zones, { fullName = "The Chambers of Puissance", shortName = "puissance", id = 880, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "ToB", levelmin = 100, levelmax = 120, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 880
-table.insert(zones.zones, { fullName = "The Gilded Spire", shortName = "gildedspire", id = 881, zem = { emu = 1.00, live = "0.50", lazarus = 1.00 }, expansion = "ToB", levelmin = 100, levelmax = 120, hotzone = false, city = false, indoor = true, isFavorite = false, isPlatinum = false, version = "classic" }) -- Reassigned ID 881
+--===== SoD : 27 zones =====
+exp = "SoD"
+
+add{ short="oldkithicor", name="Bloody Kithicor", id=456, min=75, max=80, zem=1.50, indoor=true }  -- 513 spawns
+add{ short="discordtower", name="Citadel of the Worldslayer", id=471, min=90, max=90, zem=1.50, indoor=true }  -- 1 spawns
+add{ short="olddranik", name="City of Dranik", id=474, min=84, max=87, zem=1.50, indoor=true }  -- 228 spawns
+add{ short="oldfieldofboneb", name="Field of Scale" }  -- no spawn data
+add{ short="oldkaesorab", name="Hatchery Wing", id=454, min=83, max=85, zem=1.50, indoor=true }  -- 84 spawns
+add{ short="oldkaesoraa", name="Kaesora Library", id=453, min=84, max=85, zem=1.50, indoor=true }  -- 344 spawns
+add{ short="discord", name="Korafax, Home of the Riders", id=470, min=84, max=87, zem=1.50, indoor=true }  -- 220 spawns
+add{ short="korascian", name="Korascian Warrens", id=476, min=84, max=86, zem=1.50, indoor=true }  -- 339 spawns
+add{ short="oceangreenhills", name="Oceangreen Hills", id=466, min=73, max=76, zem=1.50, indoor=true }  -- 379 spawns
+add{ short="oceangreenvillage", name="Oceangreen Village", id=467, min=72, max=75, zem=1.50, indoor=true }  -- 212 spawns
+add{ short="oldblackburrow", name="Old Blackburrow", id=468, min=75, max=76, zem=1.50, indoor=true }  -- 182 spawns
+add{ short="oldbloodfield", name="Old Bloodfields", id=472, min=85, max=86, zem=1.50, indoor=true }  -- 248 spawns
+add{ short="oldcommons", name="Old Commonlands", id=457, min=9, max=79, zem=1.50, indoor=true }  -- 568 spawns
+add{ short="oldfieldofbone", name="Old Field of Scale", id=452, min=80, max=82, zem=1.50, indoor=true }  -- 579 spawns
+add{ short="oldhighpass", name="Old Highpass Hold", id=458, zem=1.50, emuOnly=true }  -- no spawn data
+add{ short="oldkurn", name="Old Kurn's Tower", id=455, min=81, max=85, zem=1.50, indoor=true }  -- 195 spawns
+add{ short="rathechamber", name="Rathe Council Chambers", id=477, min=84, max=86, zem=1.50, indoor=true }  -- 262 spawns
+add{ short="bertoxtemple", name="Temple of Bertoxxulous", id=469, min=75, max=77, zem=1.50, indoor=true }  -- 82 spawns
+add{ short="precipiceofwar", name="The Precipice of War", id=473, min=84, max=86, zem=1.50 }  -- 44 spawns
+add{ short="thevoida", name="The Void (A)", id=459, min=90, max=90, zem=1.50, indoor=true, cat="hub" }  -- 1 spawns
+add{ short="toskirakk", name="Toskirakk", id=475, min=80, max=85, zem=1.50, indoor=true }  -- 303 spawns
+
+--===== UF : 16 zones =====
+exp = "UF"
+
+add{ short="arthicrex", name="Arthicrex", id=485, min=84, max=86, zem=1.00, indoor=true, hot=90 }  -- 487 spawns
+add{ short="brellsarena", name="Brell's Arena", id=492, min=84, max=89, zem=1.00, indoor=true, cat="arena" }  -- 13 spawns
+add{ short="brellsrest", name="Brell's Rest", id=480, min=83, max=86, zem=1.00, indoor=true }  -- 247 spawns
+add{ short="brellstemple", name="Brell's Temple", id=490, min=83, max=85, indoor=true }  -- 97 spawns
+add{ short="fungalforest", name="Fungal Forest", id=481, min=85, max=86, indoor=true }  -- 474 spawns
+add{ short="shiningcity", name="Kernagir, The Shining City", id=484, min=83, max=86 }  -- 564 spawns
+add{ short="dragoncrypt", name="Lair of the Fallen", id=495, min=85, max=85, indoor=true, cat="instance" }  -- 11 spawns
+add{ short="lichencreep", name="Lichen Creep", id=487, min=85, max=85, indoor=true }  -- 584 spawns
+add{ short="pellucid", name="Pellucid Grotto", id=488, min=83, max=85, zem=1.00, indoor=true }  -- 458 spawns
+add{ short="convorteum", name="The Convorteum", id=491, min=85, max=86, indoor=true }  -- 708 spawns
+add{ short="coolingchamber", name="The Cooling Chamber", id=483, min=83, max=87, zem=1.00, indoor=true }  -- 603 spawns
+add{ short="foundation", name="The Foundation", id=486, min=84, max=86, zem=1.00, indoor=true, hot=85 }  -- 449 spawns
+add{ short="underquarry", name="The Underquarry", id=482, min=83, max=85, zem=1.00, indoor=true }  -- 632 spawns
+add{ short="stonesnake", name="Volska's Husk", id=489, min=85, max=86, zem=1.00, indoor=true }  -- 218 spawns
+add{ short="weddingchapel", name="Wedding Chapel", id=493, min=1, max=1, cat="event" }  -- 33 spawns
+
+--===== HoT : 23 zones =====
+exp = "HoT"
+
+add{ short="alkabormare", name="Al`Kabor's Nightmare", id=709, min=88, max=90, indoor=true }  -- 262 spawns
+add{ short="fallen", name="Erudin Burning", id=706, min=85, max=88, indoor=true }  -- 348 spawns
+add{ short="thuledream", name="Fear Itself", id=711, min=88, max=91, indoor=true, hot=90 }  -- 379 spawns
+add{ short="thulehouse1", name="House of Thule", id=701, min=83, max=85, indoor=true }  -- 181 spawns
+add{ short="thulehouse2", name="House of Thule, Upper Floors", id=702, min=88, max=90, indoor=true }  -- 274 spawns
+add{ short="miragulmare", name="Miragul's Nightmare", id=710, min=88, max=90, indoor=true }  -- 206 spawns
+add{ short="phylactery", name="Miragul's Phylactery" }  -- no spawn data
+add{ short="morellcastle", name="Morell's Castle", id=707, min=89, max=93 }  -- 334 spawns
+add{ short="morelltower", name="Morell's Tower", emuOnly=true }  -- no spawn data
+add{ short="somnium", name="Sanctum Somnium", id=708, min=89, max=91 }  -- 283 spawns
+add{ short="neighborhood", name="Sunrise Hills", id=712, min=50, max=85, indoor=true, cat="housing" }  -- 31 spawns
+add{ short="feerrott2", name="The Feerrott (B)", id=700, min=84, max=86, indoor=true }  -- 473 spawns
+add{ short="housegarden", name="The Grounds", id=703, min=85, max=87, indoor=true }  -- 386 spawns
+add{ short="thulelibrary", name="The Library", id=704, min=87, max=90, zem=1.00 }  -- 111 spawns
+add{ short="well", name="The Well", id=705, min=87, max=90, indoor=true }  -- 72 spawns
+
+--===== VoA : 29 zones =====
+exp = "VoA"
+
+add{ short="argath", name="Argath", id=724, min=88, max=91, indoor=true, hot=90 }  -- 659 spawns
+add{ short="beastdomain", name="Beast's Domain", id=728, min=93, max=96, indoor=true }  -- 550 spawns
+add{ short="cityofbronze", name="City of Bronze", id=732, min=94, max=96, indoor=true }  -- 939 spawns
+add{ short="eastsepulcher", name="East Sepulcher", id=734, min=96, max=98 }  -- 295 spawns
+add{ short="pillarsalra", name="Pillars of Alra", id=730, min=95, max=97, indoor=true, hot=95 }  -- 815 spawns
+add{ short="resplendent", name="Resplendent Temple", id=729, min=94, max=95, indoor=true, hot=95 }  -- 480 spawns
+add{ short="rubak", name="Rubak Oseka", id=727, min=93, max=95 }  -- 156 spawns
+add{ short="sarithcity", name="Sarith, City of Tides", id=726, min=91, max=93, indoor=true, hot=95 }  -- 361 spawns
+add{ short="sepulcher", name="Sepulcher of Order", id=733, min=95, max=97 }  -- 556 spawns
+add{ short="shadowedmount", name="Shadowed Mount" }  -- no spawn data
+add{ short="arelis", name="Valley of Lunanyn", id=725, min=90, max=95, indoor=true }  -- 641 spawns
+add{ short="westsepulcher", name="West Sepulcher", id=735, min=95, max=98 }  -- 381 spawns
+add{ short="windsong", name="Windsong", id=731, min=94, max=96, indoor=true }  -- 434 spawns
+
+--===== RoF : 17 zones =====
+exp = "RoF"
+
+add{ short="chapterhouse", name="Chapterhouse of the Fallen", id=760, min=98, max=100, indoor=true }  -- 455 spawns
+add{ short="chelsithreborn", name="Chelsith Reborn", cat="nodata" }  -- no spawn data
+add{ short="eastwastesshard", name="East Wastes: Zeixshi-Kar's Awakening", id=755, min=96, max=98, indoor=true }  -- 527 spawns
+add{ short="eviltree", name="Evantil, the Vile Oak", id=758, min=98, max=100, indoor=true }  -- 472 spawns
+add{ short="grelleth", name="Grelleth's Palace, the Chateau of Filth", id=759, min=99, max=102, indoor=true }  -- 313 spawns
+add{ short="heartoffearc", name="Heart of Fear: The Epicenter", cat="nodata" }  -- no spawn data
+add{ short="heartoffearb", name="Heart of Fear: The Rebirth", cat="nodata" }  -- no spawn data
+add{ short="heartoffear", name="Heart of Fear: The Threshold", cat="nodata" }  -- no spawn data
+add{ short="kaelshard", name="Kael Drakkel: The King's Madness", id=754, min=97, max=99, indoor=true }  -- 420 spawns
+add{ short="poshadow", name="Plane of Shadow", cat="nodata" }  -- no spawn data
+add{ short="shardslanding", name="Shard's Landing", id=752, min=95, max=99, indoor=true, hot=100 }  -- 838 spawns
+add{ short="breedinggrounds", name="The Breeding Grounds", id=757, min=99, max=102 }  -- 260 spawns
+add{ short="burnedwoods", name="The Burned Woods", emuOnly=true }  -- no spawn data
+add{ short="crystalshard", name="The Crystal Caverns: Fragment of Fear", id=756, min=96, max=99 }  -- 238 spawns
+add{ short="pomischief", name="The Plane of Mischief" }  -- no spawn data
+add{ short="xorbb", name="Valley of King Xorbb", id=753, min=99, max=101, indoor=true }  -- 777 spawns
+
+--===== CotF : 7 zones =====
+exp = "CotF"
+
+add{ short="arginhiz", name="Argin-Hiz", min=99, max=101 }  -- Alla: 37 NPCs
+add{ short="bixiewarfront", name="Bixie Warfront", min=99, max=99 }  -- Alla: 14 NPCs
+add{ short="ethernere", name="Ethernere Tainted West Karana", min=99, max=100 }  -- Alla: 149 NPCs
+add{ short="neriakd", name="Neriak - Fourth Gate", id=43, min=100, max=101, zem=1.00, city=true, hot=105 }  -- Alla: 221 NPCs
+add{ short="deadhills", name="The Dead Hills", min=100, max=101 }  -- Alla: 38 NPCs
+add{ short="towerofrot", name="Tower of Rot", min=100, max=102, hot=105 }  -- Alla: 72 NPCs
+
+--===== TDS : 8 zones =====
+exp = "TDS"
+
+add{ short="arxmentis", name="Arx Mentis", min=104, max=106 }  -- Alla: 47 NPCs
+add{ short="brotherisland", name="Brother Island", min=101, max=103 }  -- Alla: 64 NPCs
+add{ short="endlesscaverns", name="Caverns of Endless Song", min=104, max=108 }  -- Alla: 64 NPCs
+add{ short="dredge", name="Combine Dredge", min=106, max=108 }  -- Alla: 89 NPCs
+add{ short="degmar", name="Degmar, the Lost Castle", min=105, max=106 }  -- Alla: 36 NPCs
+add{ short="kattacastrumb", name="Katta Castrum, The Deluge", min=98, max=100 }  -- Alla: 21 NPCs
+add{ short="tempesttemple", name="Tempest Temple", min=99, max=100, hot=100 }  -- Alla: 40 NPCs
+add{ short="thuliasaur", name="Thuliasaur Island", min=105, max=107 }  -- Alla: 92 NPCs
+
+--===== TBM : 5 zones =====
+exp = "TBM"
+
+add{ short="cosul", name="Crypt of Sul", min=105, max=107 }  -- Alla: 26 NPCs
+add{ short="codecayb", name="Ruins of Lxanvom", min=106, max=108 }  -- Alla: 47 NPCs
+add{ short="exaltedb", name="Sul Vius: Demiplane of Decay", min=105, max=107 }  -- Alla: 93 NPCs
+add{ short="exalted", name="Sul Vius: Demiplane of Life", min=105, max=106 }  -- Alla: 47 NPCs
+add{ short="pohealth", name="The Plane of Health", min=105, max=106 }  -- Alla: 28 NPCs
+
+--===== EoK : 7 zones =====
+exp = "EoK"
+
+add{ short="chardoktwo", name="Chardok", min=106, max=108 }  -- Alla: 90 NPCs
+add{ short="frontiermtnsb", name="Frontier Mountains", min=103, max=106 }  -- Alla: 105 NPCs
+add{ short="korshaext", name="Gates of Kor-Sha", min=99, max=106 }  -- Alla: 28 NPCs
+add{ short="korshaint", name="Kor-Sha Laboratory", min=106, max=108 }  -- Alla: 39 NPCs
+add{ short="lceanium", name="Lceanium", min=105, max=107 }  -- Alla: 35 NPCs
+add{ short="scorchedwoods", name="Scorched Woods", min=103, max=106 }  -- Alla: 78 NPCs
+add{ short="drogab", name="Temple of Droga", min=106, max=108 }  -- Alla: 106 NPCs
+
+--===== RoS : 6 zones =====
+exp = "RoS"
+
+add{ short="gorowyn", name="Gorowyn", min=110, max=113 }  -- Alla: 56 NPCs
+add{ short="charasistwo", name="Howling Stones", min=110, max=113 }  -- Alla: 24 NPCs
+add{ short="charasisb", name="Sathir's Tomb", min=110, max=113 }  -- Alla: 46 NPCs
+add{ short="skyfiretwo", name="Skyfire Mountains", min=110, max=113 }  -- Alla: 75 NPCs
+add{ short="overtheretwo", name="The Overthere", min=109, max=111 }  -- Alla: 52 NPCs
+add{ short="veeshantwo", name="Veeshan's Peak", min=110, max=113 }  -- Alla: 26 NPCs
+
+--===== TBL : 8 zones =====
+exp = "TBL"
+
+add{ short="aalishai", name="AAlishai: Palace of Embers", min=109, max=112 }  -- Alla: 56 NPCs
+add{ short="empyr", name="Empyr: Realms of Ash", min=108, max=112 }  -- Alla: 50 NPCs
+add{ short="esianti", name="Esianti: Palace of the Winds", min=109, max=112 }  -- Alla: 44 NPCs
+add{ short="gnomemtn", name="Gnome Memorial Mountain", min=107, max=109 }  -- Alla: 57 NPCs
+add{ short="mearatas", name="Mearatas: The Stone Demesne", min=110, max=112 }  -- Alla: 36 NPCs
+add{ short="trialsofsmoke", name="Plane of Smoke", min=108, max=112 }  -- Alla: 20 NPCs
+add{ short="stratos", name="Stratos: Zephyr's Flight", min=108, max=111 }  -- Alla: 59 NPCs
+add{ short="chamberoftears", name="The Chamber of Tears", min=95, max=112 }  -- Alla: 8 NPCs
+
+--===== ToV : 7 zones =====
+exp = "ToV"
+
+add{ short="crystaltwob", name="Crystal Caverns", min=112, max=115 }  -- Alla: 21 NPCs
+add{ short="kaeltwo", name="Kael Drakkel", min=114, max=116 }  -- Alla: 312 NPCs
+add{ short="eastwastestwo", name="The Eastern Wastes", min=113, max=115 }  -- Alla: 34 NPCs
+add{ short="greatdividetwo", name="The Great Divide", min=113, max=116 }  -- Alla: 36 NPCs
+add{ short="crystaltwoa", name="The Ry`Gorr Mines", min=113, max=115 }  -- Alla: 17 NPCs
+add{ short="frozenshadowtwo", name="The Tower of Frozen Shadow", min=113, max=115 }  -- Alla: 51 NPCs
+add{ short="velketortwo", name="Velketor's Labyrinth", min=113, max=115 }  -- Alla: 25 NPCs
+
+--===== CoV : 6 zones =====
+exp = "CoV"
+
+add{ short="cobaltscartwo", name="Cobalt Scar", min=112, max=115 }  -- Alla: 36 NPCs
+add{ short="necropolistwo", name="Dragon Necropolis", min=112, max=115 }  -- Alla: 33 NPCs
+add{ short="skyshrinetwo", name="Skyshrine", min=112, max=118 }  -- Alla: 22 NPCs
+add{ short="sleepertwo", name="The Sleeper's Tomb", min=113, max=116 }  -- Alla: 28 NPCs
+add{ short="templeveeshantwo", name="The Temple of Veeshan", min=112, max=116 }  -- Alla: 27 NPCs
+add{ short="westwastestwo", name="The Western Wastes", min=112, max=113 }  -- Alla: 16 NPCs
+
+--===== ToL : 8 zones =====
+exp = "ToL"
+
+add{ short="basilica", name="Basilica of Adumbration", min=118, max=118 }  -- Alla: 34 NPCs
+add{ short="bloodfalls", name="Bloodfalls", min=118, max=123 }  -- Alla: 36 NPCs
+add{ short="akhevatwo", name="Ka Vethan", min=118, max=119 }  -- Alla: 24 NPCs
+add{ short="maidentwo", name="Maiden's Eye", min=115, max=117 }  -- Alla: 44 NPCs
+add{ short="shadowvalley", name="Shadow Valley", min=118, max=120 }  -- Alla: 48 NPCs
+add{ short="umbraltwo", name="Umbral Plains", min=116, max=119 }  -- Alla: 44 NPCs
+add{ short="vexthaltwo", name="Vex Thal", min=118, max=120 }  -- Alla: 74 NPCs
+
+--===== NoS : 8 zones =====
+exp = "NoS"
+
+add{ short="darklightcaverns", name="Darklight Caverns", min=118, max=120 }  -- Alla: 21 NPCs
+add{ short="deepshade", name="Deepshade", min=118, max=121 }  -- Alla: 26 NPCs
+add{ short="firefallpass", name="Firefall Pass", min=117, max=118 }  -- Alla: 34 NPCs
+add{ short="paludaltwo", name="Paludal Depths", min=119, max=121 }  -- Alla: 37 NPCs
+add{ short="shadowhaventwo", name="Ruins of Shadow Haven", min=119, max=121 }  -- Alla: 25 NPCs
+add{ short="shadeweavertwo", name="Shadeweaver's Tangle", min=117, max=120 }  -- Alla: 76 NPCs
+add{ short="sharvahltwo", name="Shar Vahl, Divided", min=118, max=121 }  -- Alla: 30 NPCs
+
+--===== LS : 9 zones =====
+exp = "LS"
+
+add{ short="ankexfen", name="Ankexfen Keep", min=122, max=125 }  -- Alla: 33 NPCs
+add{ short="guildhallsng", name="Boldven's Hideout", min=123, max=126 }  -- Alla: 6 NPCs
+add{ short="laurioninn", name="Laurion's Inn", min=122, max=124 }  -- Alla: 39 NPCs
+add{ short="moorsofnokk", name="Moors of Nokk", min=124, max=126 }  -- Alla: 41 NPCs
+add{ short="pallomen", name="Pal'Lomen", min=123, max=125 }  -- Alla: 33 NPCs
+add{ short="herosforge", name="The Hero's Forge", min=124, max=126 }  -- Alla: 18 NPCs
+add{ short="anniversarytower", name="Tides of Time", cat="hub" }  -- no spawn data
+add{ short="timorousfalls", name="Timorous Falls", min=122, max=125 }  -- Alla: 32 NPCs
+add{ short="unkemptwoods", name="Unkempt Woods", min=123, max=126 }  -- Alla: 49 NPCs
+
+--===== TOB : 6 zones =====
+exp = "TOB"
+
+add{ short="aureatecovert", name="Aureate Covert", min=123, max=124 }  -- Alla: 12 NPCs
+add{ short="hodstock", name="Hodstock Hills", min=122, max=125 }  -- Alla: 43 NPCs
+add{ short="puissance", name="The Chambers of Puissance", min=124, max=126 }  -- Alla: 17 NPCs
+add{ short="gildedspire", name="The Gilded Spire", min=124, max=126 }  -- Alla: 22 NPCs
+add{ short="harbingerscradle", name="The Harbinger's Cradle", min=124, max=125 }  -- Alla: 15 NPCs
+add{ short="toe", name="The Theater of Eternity", min=123, max=125 }  -- Alla: 26 NPCs
+
+--===== SoR : 6 zones =====
+exp = "SoR"
+
+add{ short="arcstoneruins", name="Arcstone, Shattered Isles", min=128, max=130 }  -- Alla: 31 NPCs
+add{ short="candlemakers", name="Candlemaker's Workshop", min=128, max=130 }  -- Alla: 43 NPCs
+add{ short="spite", name="Labyrinth of Spite", min=128, max=131 }  -- Alla: 49 NPCs
+add{ short="ruinedrelic", name="Ruined Relic", min=128, max=130 }  -- Alla: 64 NPCs
+add{ short="embattledpogrowth", name="Scarred Grove", min=128, max=129 }  -- Alla: 31 NPCs
+add{ short="vortex", name="The Vortex", min=128, max=131 }  -- Alla: 24 NPCs
+
+zones.hotPoolVerified = "2026-09-05"
+zones.hotPool = {
+    { level = 20, active = 1, { name = "Upper Guk", short = "guktop" }, { name = "South Karana", short = "southkarana" }, { name = "Paludal Caverns", short = "paludal" } },
+    { level = 25, active = 1, { name = "Stonebrunt Mountains", short = "stonebrunt" }, { name = "Lake of Ill Omen", short = "lakeofillomen" }, { name = "Nedaria's Landing", short = "nedaria" } },
+    { level = 30, active = 1, { name = "Blightfire Moors", short = "moors" }, { name = "Solusek's Eye", short = "soldunga" }, { name = "Dalnir", short = "dalnir" } },
+    { level = 35, active = 1, { name = "Great Divide", short = "greatdivide" }, { name = "Stone Hive", short = "stonehive" }, { name = "Dreadlands", short = "dreadlands" } },
+    { level = 40, active = 1, { name = "Mons Letalis", short = "letalis" }, { name = "City of Mist", short = "citymist" }, { name = "The Emerald Jungle", short = "emeraldjungle" } },
+    { level = 45, active = 1, { name = "Dulak's Harbor", short = "dulak" }, { name = "Dranik's Scar", short = "draniksscar" }, { name = "The Scarlet Desert", short = "scarlet" } },
+    { level = 50, active = 3, { name = "Velketor's Labyrinth", short = "velketor" }, { name = "Old Sebilis", short = "sebilis" }, { name = "Skyfire Mountains", short = "skyfire" } },
+    { level = 55, active = 3, { name = "The Deep", short = "thedeep" }, { name = "Plane of Innovation", short = "poinnovation" }, { name = "Riwwi, Coliseum of Games", short = "riwwi" } },
+    { level = 60, active = 3, { name = "Veksar", short = "veksar" }, { name = "Blackfeather Roost", short = "roost" }, { name = "Barindu, Hanging Gardens", short = "barindu" } },
+    { level = 65, active = 3, { name = "Barren Coast", short = "barren" }, { name = "Drunder, Fortress of Zek", short = "potactics" }, { name = "Torden, The Bastion of Thunder", short = "bothunder" } },
+    { level = 70, active = 3, { name = "Arcstone", short = "arcstone" }, { name = "The Hive", short = "drachnidhive" }, { name = "Stoneroot Falls", short = "westkorlach" } },
+    { level = 75, active = 3, { name = "Direwind Cliffs", short = "direwind" }, { name = "Jewel of Atiiki", short = "atiiki" }, { name = "The Buried Sea", short = "buriedsea" } },
+    { level = 80, active = 3, { name = "Valdeholm", short = "valdeholm" }, { name = "Fortress Mechanotus", short = "mechanotus" }, { name = "Silyssar, New Chelsith", short = "silyssar" } },
+    { level = 85, active = 3, { name = "Meldrath's Majestic Mansion", short = "mansion" }, { name = "The Foundation", short = "foundation" }, { name = "Gyrospire Zeka", short = "gyrospirez" } },
+    { level = 90, active = nil, { name = "Fear Itself", short = "thuledream" }, { name = "Arthicrex", short = "arthicrex" }, { name = "Argath", short = "argath" } },
+    { level = 95, active = nil, { name = "Pillars of Alra", short = "pillarsalra" }, { name = "Sarith, City of Tides", short = "sarithcity" }, { name = "Resplendent Temple", short = "resplendent" } },
+    { level = 100, active = nil, { name = "Shard's Landing", short = "shardslanding" }, { name = "Tempest Temple", short = "tempesttemple" } },
+    { level = 105, active = nil, { name = "Neriak - Fourth Gate", short = "neriakd" }, { name = "Tower of Rot", short = "towerofrot" } },
+}
 
 return zones
