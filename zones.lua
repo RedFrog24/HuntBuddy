@@ -94,7 +94,7 @@
 
 local zones = {}
 
-zones.dataVersion = "3.16-SoR"
+zones.dataVersion = "3.31-SoR"
 zones.expansionOrder = { ["Classic"] = 1, ["RoK"] = 2, ["Velious"] = 3, ["Luclin"] = 4, ["PoP"] = 5, ["LoY"] = 6, ["LDoN"] = 7, ["GoD"] = 8, ["OoW"] = 9, ["DoN"] = 10, ["DoDh"] = 11, ["PoR"] = 12, ["TSS"] = 13, ["TBS"] = 14, ["SoF"] = 15, ["SoD"] = 16, ["UF"] = 17, ["HoT"] = 18, ["VoA"] = 19, ["RoF"] = 20, ["CotF"] = 21, ["TDS"] = 22, ["TBM"] = 23, ["EoK"] = 24, ["RoS"] = 25, ["TBL"] = 26, ["ToV"] = 27, ["CoV"] = 28, ["ToL"] = 29, ["NoS"] = 30, ["LS"] = 31, ["TOB"] = 32, ["SoR"] = 33, ["Live"] = 999 }
 zones.expansionList  = { "Classic", "RoK", "Velious", "Luclin", "PoP", "LoY", "LDoN", "GoD", "OoW", "DoN", "DoDh", "PoR", "TSS", "TBS", "SoF", "SoD", "UF", "HoT", "VoA", "RoF", "CotF", "TDS", "TBM", "EoK", "RoS", "TBL", "ToV", "CoV", "ToL", "NoS", "LS", "TOB", "SoR", "Live" }
 
@@ -123,7 +123,7 @@ local function add(t)
     }
 end
 
---===== Classic : 118 zones =====
+--===== Classic : 119 zones =====
 exp = "Classic"
 
 add{ short="akanon", name="Ak'Anon", id=55, min=22, max=34, zem=1.33, indoor=true, city=true }  -- 321 spawns, city median
@@ -141,41 +141,33 @@ add{ short="commonlands", name="Commonlands", id=408, min=3, max=45, zem=1.00, i
 add{ short="cauldron", name="Dagnor's Cauldron", id=70, min=12, max=39, zem=1.00 }  -- 121 spawns
 add{ short="apprentice", name="Designer Apprentice", id=999, zem=1.00, cat="dev", emuOnly=true }  -- no spawn data
 add{ short="ecommons", name="East Commonlands", id=22, min=2, max=40, zem=1.00, indoor=true, emuOnly=true }  -- 332 spawns
-add{ short="freporte", name="East Freeport", id=10, min=2, max=25, zem=1.00, indoor=true, city=true }  -- 244 spawns, city median
-add{ short="freeporteast", name="East Freeport", id=382, min=40, max=70, zem=1.00, indoor=true }  -- 279 spawns
+add{ short="freporte", name="East Freeport 1.0", id=10, min=2, max=25, zem=1.00, indoor=true, city=true, emuOnly=true }  -- 244 spawns, city median
+add{ short="freeporteast", name="East Freeport 2.0", id=382, min=40, max=70, zem=1.00, indoor=true }  -- 279 spawns
 add{ short="eastkarana", name="East Karana", id=15, min=11, max=35, zem=1.00 }  -- 350 spawns
 add{ short="erudsxing", name="Erud's Crossing", id=98, min=10, max=33, zem=1.00 }  -- 93 spawns
 add{ short="erudnext", name="Erudin", id=24, min=14, max=30, zem=1.33, indoor=true, city=true }  -- 122 spawns, city median
 add{ short="erudnint", name="Erudin Palace", id=23, min=30, max=35, zem=1.33, city=true }  -- 79 spawns, city median
 add{ short="unrest", name="Estate of Unrest", id=63, min=15, max=28, zem=1.73, indoor=true }  -- 304 spawns
 add{ short="everfrost", name="Everfrost Peaks", id=30, min=2, max=45, zem=1.00, indoor=true }  -- 28 spawns
-add{ short="felwithea", name="Felwithe (A)", id=61, min=40, max=40, zem=1.33, indoor=true, city=true }  -- 96 spawns, city median
-add{ short="felwitheb", name="Felwithe (B)", id=62, min=40, max=40, zem=1.33, indoor=true, city=true, cat="city" }  -- 38 spawns, city median
 add{ short="freeportsewers", name="Freeport Sewers", id=384, min=10, max=20, zem=1.00, indoor=true }  -- 104 spawns
 add{ short="beholder", name="Gorge of King Xorbb", id=16, min=11, max=22, zem=1.00 }  -- 100 spawns
 add{ short="grobb", name="Grobb", id=52, min=40, max=40, zem=1.33, city=true }  -- 119 spawns, city median
 add{ short="halas", name="Halas", id=29, min=45, max=45, zem=1.33, indoor=true, city=true }  -- 91 spawns, city median
-add{ short="highkeep", name="HighKeep", id=6, min=23, max=40, zem=2.00 }  -- 220 spawns
-add{ short="highpasshold", name="Highpass Hold", id=407, min=15, max=34, zem=1.00 }  -- 369 spawns
-add{ short="highpasskeep", name="Highpass Keep", id=412, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="highkeep", name="High Keep", id=6, min=23, max=40, zem=2.00 }  -- 220 spawns
+add{ short="highpass", name="Highpass Hold 1.0", id=5, min=16, max=45, zem=1.06, emuOnly=true }  -- 193 spawns
+add{ short="highpasshold", name="Highpass Hold 2.0", id=407, min=15, max=34, zem=1.00 }  -- 369 spawns
 add{ short="paw", name="Infected Paw", id=18, min=64, max=64, zem=0.90, indoor=true }  -- 1255 spawns
-add{ short="innothule", name="Innothule Swamp (A)", id=46, min=2, max=12, zem=1.00, indoor=true, emuOnly=true }  -- 245 spawns
-add{ short="innothuleb", name="Innothule Swamp (B)", id=413, min=1, max=8, zem=1.00, indoor=true }  -- 329 spawns
-add{ short="kaladima", name="Kaladim (A)", id=60, min=39, max=41, zem=1.33, indoor=true, city=true }  -- 68 spawns, city median
-add{ short="kaladimb", name="Kaladim (B)", id=67, min=39, max=41, zem=1.33, indoor=true, city=true }  -- 81 spawns, city median
+add{ short="innothule", name="Innothule Swamp 1.0", id=46, min=2, max=12, zem=1.00, indoor=true, emuOnly=true }  -- 245 spawns
+add{ short="innothuleb", name="Innothule Swamp 2.0", id=413, min=1, max=8, zem=1.00, indoor=true }  -- 329 spawns
 add{ short="kedge", name="Kedge Keep", id=64, min=38, max=49, zem=1.33 }  -- 261 spawns
 add{ short="kerraridge", name="Kerra Isle", id=74, min=14, max=21, zem=1.20 }  -- 248 spawns
-add{ short="kithicor", name="Kithicor Forest (A)", id=20, min=29, max=37, zem=1.00, indoor=true }  -- 1722 spawns
-add{ short="kithforest", name="Kithicor Forest (B)", id=410, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
+add{ short="kithicor", name="Kithicor Forest", id=20, min=29, max=37, zem=1.00, indoor=true }  -- 1722 spawns
 add{ short="lakerathe", name="Lake Rathetear", id=51, min=11, max=35, zem=1.00, indoor=true }  -- 300 spawns
 add{ short="lavastorm", name="Lavastorm Mountains", id=27, min=11, max=60, zem=0.75, indoor=true }  -- 398 spawns
-add{ short="load", name="Loading (A)", id=184, zem=1.00, indoor=true, cat="dev" }  -- no spawn data
-add{ short="load2", name="Loading (B)", id=185, zem=1.00, indoor=true, cat="dev" }  -- no spawn data
-add{ short="clz", name="Loading (C)", id=190, zem=1.00, cat="dev" }  -- no spawn data
 add{ short="gukbottom", name="Lower Guk", id=66, min=31, max=42, zem=1.06, indoor=true }  -- 465 spawns
 add{ short="erudsxing2", name="Marauder's Mire", id=130, zem=1.00, cat="nodata", emuOnly=true }  -- no spawn data
-add{ short="misty", name="Misty Thicket (A)", id=33, min=3, max=11, zem=1.00, indoor=true, emuOnly=true }  -- 480 spawns
-add{ short="mistythicket", name="Misty Thicket (B)", id=415, min=2, max=11, zem=1.00, indoor=true }  -- 461 spawns
+add{ short="misty", name="Misty Thicket 1.0", id=33, min=3, max=11, zem=1.00, indoor=true, emuOnly=true }  -- 480 spawns
+add{ short="mistythicket", name="Misty Thicket 2.0", id=415, min=2, max=11, zem=1.00, indoor=true }  -- 461 spawns
 add{ short="rathemtn", name="Mountains of Rathe", id=50, min=6, max=40, zem=1.00, indoor=true }  -- 535 spawns
 add{ short="soldungb", name="Nagafen's Lair", id=32, min=35, max=49, zem=1.06, indoor=true }  -- 270 spawns
 add{ short="najena", name="Najena", id=44, min=12, max=23, zem=1.73, indoor=true }  -- 256 spawns
@@ -186,11 +178,13 @@ add{ short="neriakb", name="Neriak Commons", id=41, min=40, max=40, zem=1.33, in
 add{ short="neriaka", name="Neriak Foreign Quarter", id=40, min=37, max=40, zem=1.33, indoor=true, city=true }  -- 85 spawns, city median
 add{ short="neriakd", name="Neriak Palace", id=43, min=100, max=101, zem=1.00, city=true }  -- Alla: 221 NPCs
 add{ short="neriakc", name="Neriak Third Gate", id=42, min=38, max=40, zem=1.33, indoor=true, city=true }  -- 126 spawns, city median
-add{ short="freportn", name="North Freeport", id=8, min=30, max=45, zem=1.33, indoor=true, city=true }  -- 118 spawns, city median
+add{ short="freportn", name="North Freeport", id=8, min=30, max=45, zem=1.33, indoor=true, city=true, emuOnly=true }  -- 118 spawns, city median
+add{ short="kaladimb", name="North Kaladim", id=67, min=39, max=41, zem=1.33, indoor=true, city=true }  -- 81 spawns, city median
 add{ short="northkarana", name="North Karana", id=13, min=10, max=36, zem=1.00 }  -- 232 spawns
 add{ short="qeynos2", name="North Qeynos", id=2, min=1, max=5, zem=1.00, city=true }  -- 216 spawns, city median
-add{ short="nro", name="North Ro (A)", id=34, min=5, max=30, zem=1.00, indoor=true, emuOnly=true }  -- 236 spawns
-add{ short="northro", name="North Ro (B)", id=392, min=1, max=40, zem=1.00 }  -- 308 spawns
+add{ short="nro", name="North Ro 1.0", id=34, min=5, max=30, zem=1.00, indoor=true, emuOnly=true }  -- 236 spawns
+add{ short="northro", name="North Ro 2.0", id=392, min=1, max=40, zem=1.00 }  -- 308 spawns
+add{ short="felwithea", name="Northern Felwithe", id=61, min=40, max=40, zem=1.33, indoor=true, city=true }  -- 96 spawns, city median
 add{ short="oasis", name="Oasis of Marr", id=37, min=11, max=36, zem=1.00, indoor=true, emuOnly=true }  -- 288 spawns
 add{ short="oot", name="Ocean of Tears", id=69, min=13, max=46, zem=1.13, emuOnly=true }  -- 320 spawns
 add{ short="oceanoftears", name="Ocean Of Tears", id=409, min=15, max=45, zem=1.00 }  -- 598 spawns
@@ -206,73 +200,73 @@ add{ short="rivervale", name="Rivervale", id=19, min=6, max=30, zem=1.33, indoor
 add{ short="takishruins", name="Ruins of Takish-Hiz", id=376, min=55, max=67, zem=1.00 }  -- 175 spawns
 add{ short="shadowrest", name="Shadowrest", id=187, min=20, max=50, zem=1.00, cat="hub" }  -- 14 spawns
 add{ short="soldunga", name="Solusek's Eye", id=31, min=24, max=32, zem=1.73, indoor=true, hot=30 }  -- 476 spawns
+add{ short="kaladima", name="South Kaladim", id=60, min=39, max=41, zem=1.33, indoor=true, city=true }  -- 68 spawns, city median
 add{ short="southkarana", name="South Karana", id=14, min=10, max=31, zem=1.00, hot=20 }  -- 1240 spawns
 add{ short="qeynos", name="South Qeynos", id=1, min=10, max=27, zem=1.00, city=true }  -- 207 spawns, city median
-add{ short="sro", name="South Ro (A)", id=35, min=6, max=35, zem=1.00, indoor=true, emuOnly=true }  -- 370 spawns
-add{ short="southro", name="South Ro (B)", id=393, min=10, max=49, zem=1.00 }  -- 378 spawns
-add{ short="steamfont", name="Steamfont Mountains", id=56, min=2, max=26, zem=1.00, indoor=true }  -- 370 spawns
-add{ short="steamfontmts", name="Steamfont Mountains", id=448, min=1, max=26, zem=1.00, indoor=true }  -- 378 spawns
+add{ short="sro", name="South Ro 1.0", id=35, min=6, max=35, zem=1.00, indoor=true, emuOnly=true }  -- 370 spawns
+add{ short="southro", name="South Ro 2.0", id=393, min=10, max=49, zem=1.00 }  -- 378 spawns
+add{ short="felwitheb", name="Southern Felwithe", id=62, min=40, max=40, zem=1.33, indoor=true, city=true, cat="city" }  -- 38 spawns, city median
+add{ short="steamfont", name="Steamfont Mountains 1.0", id=56, min=2, max=26, zem=1.00, indoor=true, emuOnly=true }  -- 370 spawns
+add{ short="steamfontmts", name="Steamfont Mountains 2.0", id=448, min=1, max=26, zem=1.00, indoor=true }  -- 378 spawns
 add{ short="stonebrunt", name="Stonebrunt Mountains", id=100, min=17, max=30, zem=1.00, indoor=true, hot=25 }  -- 619 spawns
 add{ short="cshome", name="Sunset Home", id=26, min=50, max=65, zem=1.00, indoor=true, cat="housing", emuOnly=true }  -- 40 spawns
 add{ short="qrg", name="Surefall Glade", id=3, min=2, max=24, zem=1.33, indoor=true, city=true }  -- 72 spawns, city median
 add{ short="soltemple", name="Temple of Solusek Ro", id=80, min=34, max=40, zem=1.33, indoor=true }  -- 49 spawns
-add{ short="arena", name="The Arena (A)", id=77, min=75, max=80, zem=1.00, indoor=true, cat="arena" }  -- 5 spawns
-add{ short="arena2", name="The Arena (B)", id=180, zem=1.00, indoor=true, cat="arena" }  -- no spawn data
+add{ short="arena", name="The Arena", id=77, min=75, max=80, zem=1.00, indoor=true, cat="arena" }  -- 5 spawns
 add{ short="barter", name="The Barter Hall", id=346, zem=1.00, cat="hub", emuOnly=true }  -- no spawn data
 add{ short="bazaar", name="The Bazaar", id=151, min=35, max=60, zem=1.00, cat="hub" }  -- 116 spawns
 add{ short="bazaar2", name="The Bazaar (2)", cat="instance", emuOnly=true }  -- no spawn data
 add{ short="soldungc", name="The Caverns of Exile", id=278, min=54, max=60, zem=2.00, indoor=true }  -- 282 spawns
-add{ short="feerrott", name="The Feerrott(A)", id=47, min=3, max=32, zem=1.00, indoor=true }  -- 563 spawns
+add{ short="feerrott", name="The Feerrott", id=47, min=3, max=32, zem=1.00, indoor=true }  -- 563 spawns
 add{ short="fhalls", name="The Forgotten Halls", id=998, min=2, max=4, zem=1.00 }  -- 57 spawns
 add{ short="gfaydark", name="The Greater Faydark", id=54, min=2, max=45, zem=1.00, indoor=true }  -- 632 spawns
 add{ short="guildlobby", name="The Guild Lobby", id=344, min=50, max=70, zem=1.00, cat="hub" }  -- 49 spawns
 add{ short="jaggedpine", name="The Jaggedpine Forest", id=181, min=34, max=44, zem=1.00, indoor=true }  -- 599 spawns
 add{ short="lfaydark", name="The Lesser Faydark", id=57, min=6, max=30, zem=1.00, indoor=true }  -- 301 spawns
-add{ short="tutoriala", name="The Mines of Gloomingdeep (A)", id=188, min=5, max=5, zem=1.00, cat="unused" }  -- 1 spawns
-add{ short="tutorialb", name="The Mines of Gloomingdeep (B)", id=189, min=2, max=9, zem=1.00 }  -- 361 spawns
-add{ short="hateplane", name="The Plane of Hate", id=76, min=50, max=56, zem=1.00, indoor=true }  -- 175 spawns
-add{ short="hateplaneb", name="The Plane of Hate", id=186, min=54, max=64, zem=1.13 }  -- 728 spawns
+add{ short="tutorialb", name="The Mines of Gloomingdeep", id=189, min=2, max=9, zem=1.00 }  -- 361 spawns
+add{ short="hateplane", name="The Plane of Hate 1.0", id=76, min=50, max=56, zem=1.00, indoor=true, emuOnly=true }  -- 175 spawns
+add{ short="hateplaneb", name="The Plane of Hate 2.0", id=186, min=54, max=64, zem=1.13 }  -- 728 spawns
 add{ short="hole", name="The Ruins of Old Paineel", id=39, min=45, max=56, zem=1.33, indoor=true }  -- 1171 spawns
 add{ short="warrens", name="The Warrens", id=101, min=5, max=8, zem=2.00, indoor=true, city=true }  -- 584 spawns, city median
 add{ short="dragonscalea", name="Tinmizer's Wunderwerks", cat="hub" }  -- no spawn data
-add{ short="tox", name="Toxxulia Forest", id=38, min=1, max=35, zem=1.00, indoor=true, emuOnly=true }  -- 495 spawns
-add{ short="toxxulia", name="Toxxulia Forest", id=414, min=2, max=20, zem=1.00, indoor=true }  -- 538 spawns
+add{ short="tox", name="Toxxulia Forest 1.0", id=38, min=1, max=35, zem=1.00, indoor=true, emuOnly=true }  -- 495 spawns
+add{ short="toxxulia", name="Toxxulia Forest 2.0", id=414, min=2, max=20, zem=1.00, indoor=true }  -- 538 spawns
 add{ short="tutorial", name="Tutorial Zone", id=183, zem=1.00, indoor=true, cat="nodata" }  -- no spawn data
 add{ short="guktop", name="Upper Guk", id=65, min=13, max=25, zem=2.00, indoor=true, hot=20 }  -- 579 spawns
-add{ short="weddingchapeldark", name="Wedding Chapel", id=494, min=1, max=1, cat="event" }  -- 33 spawns
+add{ short="weddingchapeldark", name="Wedding Chapel (Dark)", id=494, min=1, max=1, cat="event" }  -- 33 spawns
 add{ short="commons", name="West Commonlands", id=21, min=7, max=32, zem=1.00, indoor=true, emuOnly=true }  -- 191 spawns
-add{ short="freportw", name="West Freeport", id=9, min=1, max=26, zem=1.00, indoor=true, city=true }  -- 220 spawns, city median
-add{ short="freeportwest", name="West Freeport", id=383, min=25, max=70, zem=1.00 }  -- 314 spawns
+add{ short="freportw", name="West Freeport 1.0", id=9, min=1, max=26, zem=1.00, indoor=true, city=true, emuOnly=true }  -- 220 spawns, city median
+add{ short="freeportwest", name="West Freeport 2.0", id=383, min=25, max=70, zem=1.00 }  -- 314 spawns
 add{ short="qey2hh1", name="West Karana", id=12, min=4, max=30, zem=1.00 }  -- 394 spawns
 
 --===== RoK : 28 zones =====
 exp = "RoK"
 
 add{ short="burningwood", name="Burning Woods", id=87, min=37, max=45, zem=1.00, indoor=true }  -- 471 spawns
-add{ short="chardok", name="Chardok", id=103, min=49, max=56, zem=1.50, indoor=true }  -- 713 spawns
+add{ short="chardok", name="Chardok 1.0", id=103, min=49, max=56, zem=1.50, indoor=true }  -- 713 spawns
 add{ short="citymist", name="City of Mist", id=90, min=36, max=45, zem=0.85, indoor=true, hot=40 }  -- 968 spawns
 add{ short="dalnir", name="Dalnir", id=104, min=26, max=30, zem=1.13, indoor=true, hot=30 }  -- 227 spawns
 add{ short="dreadlands", name="Dreadlands", id=86, min=34, max=40, zem=1.00, indoor=true, hot=35 }  -- 477 spawns
 add{ short="cabeast", name="East Cabilis", id=106, min=1, max=30, zem=1.33, indoor=true, city=true }  -- 203 spawns, city median
 add{ short="firiona", name="Firiona Vie", id=84, min=28, max=45, zem=1.00, indoor=true }  -- 567 spawns
-add{ short="frontiermtns", name="Frontier Mountains", id=92, min=28, max=35, zem=1.00, indoor=true }  -- 489 spawns
-add{ short="charasis", name="Howling Stones", id=105, min=45, max=52, zem=1.13, indoor=true }  -- 654 spawns
+add{ short="frontiermtns", name="Frontier Mountains 1.0", id=92, min=28, max=35, zem=1.00, indoor=true }  -- 489 spawns
+add{ short="charasis", name="Howling Stones 1.0", id=105, min=45, max=52, zem=1.13, indoor=true }  -- 654 spawns
 add{ short="kaesora", name="Kaesora", id=88, min=31, max=35, zem=1.46, indoor=true }  -- 297 spawns
 add{ short="karnor", name="Karnor's Castle", id=102, min=42, max=50, zem=1.13, indoor=true }  -- 564 spawns
 add{ short="kurn", name="Kurn's Tower", id=97, min=12, max=17, zem=2.00, indoor=true }  -- 628 spawns
 add{ short="lakeofillomen", name="Lake of Ill Omen", id=85, min=12, max=35, zem=0.80, indoor=true, hot=25 }  -- 647 spawns
 add{ short="nurga", name="Mines of Nurga", id=107, min=31, max=49, zem=0.95 }  -- 1244 spawns
 add{ short="sebilis", name="Old Sebilis", id=89, min=47, max=55, zem=2.50, indoor=true, hot=50 }  -- 1098 spawns
-add{ short="skyfire", name="Skyfire Mountains", id=91, min=43, max=51, zem=1.06, indoor=true, hot=50 }  -- 312 spawns
+add{ short="skyfire", name="Skyfire Mountains 1.0", id=91, min=43, max=51, zem=1.06, indoor=true, hot=50 }  -- 312 spawns
 add{ short="swampofnohope", name="Swamp of No Hope", id=83, min=11, max=25, zem=1.00, indoor=true }  -- 750 spawns
-add{ short="droga", name="Temple of Droga", id=81, min=29, max=53, zem=0.95 }  -- 4666 spawns
+add{ short="droga", name="Temple of Droga 1.0", id=81, min=29, max=53, zem=0.95 }  -- 4666 spawns
 add{ short="emeraldjungle", name="The Emerald Jungle", id=94, min=35, max=40, zem=1.00, indoor=true, hot=40 }  -- 332 spawns
 add{ short="fieldofbone", name="The Field of Bone", id=78, min=2, max=27, zem=1.00, indoor=true }  -- 607 spawns
 add{ short="chardokb", name="The Halls of Betrayal", id=277, min=56, max=63, zem=2.00, indoor=true }  -- 507 spawns
-add{ short="overthere", name="The Overthere", id=93, min=30, max=33, zem=1.00, indoor=true, city=true }  -- 539 spawns, city median
+add{ short="overthere", name="The Overthere 1.0", id=93, min=30, max=33, zem=1.00, indoor=true, city=true }  -- 539 spawns, city median
 add{ short="timorous", name="Timorous Deep", id=96, min=14, max=50, zem=1.00, indoor=true }  -- 350 spawns
 add{ short="trakanon", name="Trakanon's Teeth", id=95, min=36, max=50, zem=1.00, indoor=true }  -- 553 spawns
-add{ short="veeshan", name="Veeshan's Peak", id=108, min=62, max=69, zem=1.00, indoor=true }  -- 712 spawns
+add{ short="veeshan", name="Veeshan's Peak 1.0", id=108, min=62, max=69, zem=1.00, indoor=true }  -- 712 spawns
 add{ short="veksar", name="Veksar", id=109, min=51, max=60, zem=1.33, indoor=true, hot=60 }  -- 285 spawns
 add{ short="warslikswood", name="Warsliks Wood", id=79, min=3, max=26, zem=1.00, indoor=true }  -- 435 spawns
 add{ short="cabwest", name="West Cabilis", id=82, min=30, max=50, zem=1.33, indoor=true, city=true }  -- 68 spawns, city median
@@ -280,9 +274,9 @@ add{ short="cabwest", name="West Cabilis", id=82, min=30, max=50, zem=1.33, indo
 --===== Velious : 19 zones =====
 exp = "Velious"
 
-add{ short="cobaltscar", name="Cobalt Scar", id=117, min=38, max=50, zem=1.00, indoor=true }  -- 310 spawns
-add{ short="crystal", name="Crystal Caverns", id=121, min=29, max=37, zem=1.13 }  -- 260 spawns
-add{ short="necropolis", name="Dragon Necropolis", id=123, min=48, max=58, zem=1.50, indoor=true }  -- 469 spawns
+add{ short="cobaltscar", name="Cobalt Scar 1.0", id=117, min=38, max=50, zem=1.00, indoor=true }  -- 310 spawns
+add{ short="crystal", name="Crystal Caverns 1.0", id=121, min=29, max=37, zem=1.13 }  -- 260 spawns
+add{ short="necropolis", name="Dragon Necropolis 1.0", id=123, min=48, max=58, zem=1.50, indoor=true }  -- 469 spawns
 add{ short="eastwastes", name="Eastern Wastes", id=116, min=32, max=55, zem=1.00, indoor=true }  -- 591 spawns
 add{ short="greatdivide", name="Great Divide", id=118, min=29, max=53, zem=1.00, indoor=true, hot=35 }  -- 970 spawns
 add{ short="iceclad", name="Iceclad Ocean", id=110, min=29, max=35, zem=1.00, indoor=true }  -- 300 spawns
@@ -291,13 +285,13 @@ add{ short="kael", name="Kael Drakkal", id=113, min=35, max=56, zem=1.13, indoor
 add{ short="growthplane", name="Plane of Growth", id=127, min=52, max=60, zem=1.13, indoor=true }  -- 347 spawns
 add{ short="mischiefplane", name="Plane of Mischief", id=126, min=52, max=63, zem=1.13, indoor=true }  -- 1055 spawns
 add{ short="sirens", name="Siren's Grotto", id=125, min=50, max=56, zem=0.85 }  -- 1002 spawns
-add{ short="skyshrine", name="Skyshrine", id=114, min=38, max=62, zem=1.13, indoor=true }  -- 1000 spawns
+add{ short="skyshrine", name="Skyshrine 1.0", id=114, min=38, max=62, zem=1.13, indoor=true }  -- 1000 spawns
 add{ short="sleeper", name="Sleeper's Tomb", id=128, min=66, max=66, zem=1.20, indoor=true }  -- 295 spawns
 add{ short="templeveeshan", name="Temple of Veeshan", id=124, min=60, max=65, zem=1.33, indoor=true }  -- 402 spawns
 add{ short="wakening", name="The Wakening Land", id=119, min=37, max=48, zem=1.00, indoor=true }  -- 619 spawns
 add{ short="thurgadina", name="Thurgadin", id=115, min=31, max=42, zem=1.13, indoor=true }  -- 239 spawns
 add{ short="frozenshadow", name="Tower of Frozen Shadow", id=111, min=30, max=40, zem=1.13, indoor=true }  -- 405 spawns
-add{ short="velketor", name="Velketor's Labyrinth", id=112, min=46, max=55, zem=1.50, indoor=true, hot=50 }  -- 782 spawns
+add{ short="velketor", name="Velketor's Labyrinth 1.0", id=112, min=46, max=55, zem=1.50, indoor=true, hot=50 }  -- 782 spawns
 add{ short="westwastes", name="Western Wastes", id=120, min=48, max=66, zem=1.06, indoor=true }  -- 405 spawns
 
 --===== Luclin : 27 zones =====
@@ -329,7 +323,7 @@ add{ short="scarlet", name="The Scarlet Desert", id=175, min=36, max=43, zem=1.0
 add{ short="tenebrous", name="The Tenebrous Mountains", id=172, min=34, max=41, zem=1.75, indoor=true }  -- 495 spawns
 add{ short="twilight", name="The Twilight Sea", id=170, min=26, max=39, zem=1.00, indoor=true }  -- 1513 spawns
 add{ short="umbral", name="The Umbral Plains", id=176, min=55, max=58, zem=1.20, indoor=true }  -- 851 spawns
-add{ short="vexthal", name="Vex Thal", id=158, min=58, max=66, zem=1.33, indoor=true }  -- 990 spawns
+add{ short="vexthal", name="Vex Thal 1.0", id=158, min=58, max=66, zem=1.33, indoor=true }  -- 990 spawns
 
 --===== PoP : 23 zones =====
 exp = "PoP"
@@ -351,10 +345,10 @@ add{ short="potranquility", name="Plane of Tranquility", id=203, min=46, max=60,
 add{ short="povalor", name="Plane of Valor", id=208, min=61, max=66, zem=2.35, indoor=true }  -- 377 spawns
 add{ short="powar", name="Plane of War", id=213, zem=1.00, indoor=true }  -- no spawn data
 add{ short="powater", name="Reef of Coirnav", id=216, min=65, max=68, zem=3.00 }  -- 299 spawns
-add{ short="codecay", name="Ruins of Lxanvom", id=200, min=61, max=62, zem=2.35, indoor=true }  -- 1025 spawns
+add{ short="codecay", name="Ruins of Lxanvom 1.0", id=200, min=61, max=62, zem=2.35, indoor=true }  -- 1025 spawns
 add{ short="solrotower", name="Solusek Ro's Tower", id=212, min=61, max=70, zem=2.75, indoor=true }  -- 561 spawns
 add{ short="poearthb", name="Stronghold of the Twelve", id=222, min=65, max=68, zem=3.00, indoor=true }  -- 92 spawns
-add{ short="hohonorb", name="Temple of Marr (A)", id=220, min=61, max=68, zem=2.75, indoor=true }  -- 58 spawns
+add{ short="hohonorb", name="Temple of Marr", id=220, min=61, max=68, zem=2.75, indoor=true }  -- 58 spawns
 add{ short="bothunder", name="Torden, The Bastion of Thunder", id=209, min=61, max=64, zem=2.75, indoor=true, hot=65 }  -- 790 spawns
 add{ short="poeartha", name="Vegarlson, The Earthen Badlands", id=218, min=63, max=66, zem=3.00, indoor=true }  -- 316 spawns
 
@@ -431,7 +425,6 @@ add{ short="kodtaz", name="Kod'Taz, Broken Trial Grounds", id=293, min=64, max=6
 add{ short="natimbi", name="Natimbi, The Broken Shores", id=280, min=44, max=51, zem=1.50 }  -- 762 spawns
 add{ short="qinimi", name="Qinimi, Court of Nihilia", id=281, min=50, max=55, zem=2.00 }  -- 639 spawns
 add{ short="qvic", name="Qvic, Prayer Grounds of Calling", id=295, min=66, max=69, zem=2.00, indoor=true }  -- 1155 spawns
-add{ short="qvicb", name="Qvic, the Hidden Vault", id=299, zem=1.00, emuOnly=true }  -- no spawn data
 add{ short="riwwi", name="Riwwi, Coliseum of Games", id=282, min=47, max=60, zem=2.00, hot=55 }  -- 298 spawns
 add{ short="snlair", name="Sewers of Nihilia, Lair of Trapped Ones", id=286, min=61, max=64, zem=1.50, indoor=true }  -- 209 spawns
 add{ short="snpool", name="Sewers of Nihilia, Pool of Sludge", id=285, min=59, max=62, zem=1.50, indoor=true }  -- 178 spawns
@@ -456,13 +449,6 @@ add{ short="dranikhollowsb", name="Dranik's Hollows (B)", id=319, min=66, max=66
 add{ short="dranikhollowsc", name="Dranik's Hollows (C)", id=320, min=66, max=66, zem=1.75 }  -- 100 spawns
 add{ short="draniksscar", name="Dranik's Scar", id=302, min=40, max=50, zem=1.75, indoor=true, hot=45 }  -- 807 spawns
 add{ short="harbingers", name="Harbingers' Spire", id=335, min=53, max=63, zem=2.00 }  -- 247 spawns
-add{ short="provinggrounds", name="Muramite Proving Grounds", id=316, min=70, max=70, zem=2.75, indoor=true, cat="instance" }  -- 814 spawns
-add{ short="chambersa", name="Muramite Proving Grounds (A)", id=304, min=65, max=75, zem=1.00, indoor=true, cat="instance" }  -- 23 spawns
-add{ short="chambersb", name="Muramite Proving Grounds (B)", id=305, min=70, max=80, zem=1.00, indoor=true, cat="instance" }  -- 10 spawns
-add{ short="chambersc", name="Muramite Proving Grounds (C)", id=306, min=55, max=64, zem=1.00, indoor=true, cat="instance" }  -- 47 spawns
-add{ short="chambersd", name="Muramite Proving Grounds (D)", id=307, min=64, max=72, zem=1.00, indoor=true, cat="instance" }  -- 18 spawns
-add{ short="chamberse", name="Muramite Proving Grounds (E)", id=308, min=65, max=72, zem=1.00, indoor=true, cat="instance" }  -- 15 spawns
-add{ short="chambersf", name="Muramite Proving Grounds (F)", id=309, min=70, max=70, zem=1.00, indoor=true, cat="instance" }  -- 70 spawns
 add{ short="causeway", name="Nobles' Causeway", id=303, min=61, max=66, zem=2.25, indoor=true }  -- 661 spawns
 add{ short="riftseekers", name="Riftseekers' Sanctum", id=334, min=71, max=72, zem=3.00 }  -- 697 spawns
 add{ short="draniksewersa", name="Sewers of Dranik (A)", id=331, min=67, max=68, zem=1.75, indoor=true }  -- 130 spawns
@@ -498,7 +484,7 @@ add{ short="westkorlachc", name="Lair of the Korlach", id=361, min=67, max=74, z
 add{ short="drachnidhivea", name="Living Larder", id=355, min=60, max=71, zem=1.00 }  -- 473 spawns
 add{ short="drachnidhivec", name="Queen Sendaii's Lair", id=357, min=1, max=70, zem=1.00 }  -- 28 spawns
 add{ short="illsalin", name="Ruins of Illsalin", id=347, min=70, max=72, zem=1.00, indoor=true }  -- 298 spawns
-add{ short="nektulosa", name="Shadowed Grove", id=368, min=20, max=27, zem=1.00 }  -- 30 spawns
+add{ short="nektulosa", name="Shadowed Grove", id=368, min=20, max=27, zem=1.00, cat="instance" }  -- 30 spawns
 add{ short="shadowspine", name="Shadowspine", id=364, min=70, max=74, zem=1.00 }  -- 78 spawns
 add{ short="eastkorlacha", name="Snarlstone Dens", id=363, min=66, max=68, zem=1.00 }  -- 355 spawns
 add{ short="corathusa", name="Sporali Caverns", id=366, min=69, max=71, zem=1.00 }  -- 213 spawns
@@ -522,7 +508,7 @@ add{ short="ragea", name="Razorthorn, Tower of Sullon Zek", id=375, min=70, max=
 add{ short="relic", name="Relic", id=370, min=70, max=72, zem=1.00 }  -- 213 spawns
 add{ short="skylance", name="Skylance", id=371, min=65, max=72, zem=1.00, indoor=true }  -- 126 spawns
 add{ short="rage", name="Sverag, Stronghold of Rage", id=374, min=72, max=74, zem=1.00 }  -- 206 spawns
-add{ short="freeporttemple", name="Temple of Marr (B)", id=386, zem=1.00, emuOnly=true }  -- no spawn data
+add{ short="freeporttemple", name="Temple of Marr (B)", id=386, zem=1.00, cat="instance" }  -- no spawn data
 add{ short="devastation", name="The Devastation", id=372, min=49, max=72, zem=1.00, indoor=true }  -- 1138 spawns
 add{ short="elddar", name="The Elddar Forest", id=378, min=69, max=73, zem=1.00 }  -- 381 spawns
 add{ short="takishruinsa", name="The Root of Ro", id=377, min=68, max=70, zem=1.00, indoor=true }  -- 28 spawns
@@ -565,7 +551,7 @@ add{ short="solteris", name="Solteris, the Throne of Ro", id=421, min=75, max=76
 add{ short="suncrest", name="Suncrest Isle", id=426, min=74, max=76, zem=1.00, indoor=true }  -- 128 spawns
 add{ short="thalassius", name="Thalassius, the Coral Keep", id=417, min=73, max=76, zem=1.00, indoor=true }  -- 287 spawns
 add{ short="buriedsea", name="The Buried Sea", id=423, min=68, max=76, zem=1.00, indoor=true, hot=75 }  -- 876 spawns
-add{ short="shipmvp", name="The Open Sea (A)", id=431, min=73, max=76, zem=1.00, indoor=true }  -- 62 spawns
+add{ short="shipmvp", name="The Open Sea", id=431, min=73, max=76, zem=1.00, indoor=true }  -- 62 spawns
 add{ short="zhisza", name="Zhisza, the Shissar Sanctuary", id=419, min=75, max=78, zem=1.00, indoor=true }  -- 194 spawns
 
 --===== SoF : 14 zones =====
@@ -603,12 +589,11 @@ add{ short="oldblackburrow", name="Old Blackburrow", id=468, min=75, max=76, zem
 add{ short="oldbloodfield", name="Old Bloodfields", id=472, min=85, max=86, zem=1.50, indoor=true }  -- 248 spawns
 add{ short="oldcommons", name="Old Commonlands", id=457, min=9, max=79, zem=1.50, indoor=true }  -- 568 spawns
 add{ short="oldfieldofbone", name="Old Field of Scale", id=452, min=80, max=82, zem=1.50, indoor=true }  -- 579 spawns
-add{ short="oldhighpass", name="Old Highpass Hold", id=458, zem=1.50, emuOnly=true }  -- no spawn data
 add{ short="oldkurn", name="Old Kurn's Tower", id=455, min=81, max=85, zem=1.50, indoor=true }  -- 195 spawns
 add{ short="rathechamber", name="Rathe Council Chambers", id=477, min=84, max=86, zem=1.50, indoor=true }  -- 262 spawns
 add{ short="bertoxtemple", name="Temple of Bertoxxulous", id=469, min=75, max=77, zem=1.50, indoor=true }  -- 82 spawns
 add{ short="precipiceofwar", name="The Precipice of War", id=473, min=84, max=86, zem=1.50 }  -- 44 spawns
-add{ short="thevoida", name="The Void (A)", id=459, min=90, max=90, zem=1.50, indoor=true, cat="hub" }  -- 1 spawns
+add{ short="thevoida", name="The Void", id=459, min=90, max=90, zem=1.50, indoor=true, cat="hub" }  -- 1 spawns
 add{ short="toskirakk", name="Toskirakk", id=475, min=80, max=85, zem=1.50, indoor=true }  -- 303 spawns
 
 --===== UF : 16 zones =====
@@ -636,15 +621,14 @@ exp = "HoT"
 add{ short="alkabormare", name="Al`Kabor's Nightmare", id=709, min=88, max=90, indoor=true }  -- 262 spawns
 add{ short="fallen", name="Erudin Burning", id=706, min=85, max=88, indoor=true }  -- 348 spawns
 add{ short="thuledream", name="Fear Itself", id=711, min=88, max=91, indoor=true, hot=90 }  -- 379 spawns
+add{ short="feerrott2", name="Feerrott, the Dream", id=700, min=84, max=86, indoor=true }  -- 473 spawns
 add{ short="thulehouse1", name="House of Thule", id=701, min=83, max=85, indoor=true }  -- 181 spawns
 add{ short="thulehouse2", name="House of Thule, Upper Floors", id=702, min=88, max=90, indoor=true }  -- 274 spawns
 add{ short="miragulmare", name="Miragul's Nightmare", id=710, min=88, max=90, indoor=true }  -- 206 spawns
 add{ short="phylactery", name="Miragul's Phylactery" }  -- no spawn data
 add{ short="morellcastle", name="Morell's Castle", id=707, min=89, max=93 }  -- 334 spawns
-add{ short="morelltower", name="Morell's Tower", emuOnly=true }  -- no spawn data
 add{ short="somnium", name="Sanctum Somnium", id=708, min=89, max=91 }  -- 283 spawns
 add{ short="neighborhood", name="Sunrise Hills", id=712, min=50, max=85, indoor=true, cat="housing" }  -- 31 spawns
-add{ short="feerrott2", name="The Feerrott (B)", id=700, min=84, max=86, indoor=true }  -- 473 spawns
 add{ short="housegarden", name="The Grounds", id=703, min=85, max=87, indoor=true }  -- 386 spawns
 add{ short="thulelibrary", name="The Library", id=704, min=87, max=90, zem=1.00 }  -- 111 spawns
 add{ short="well", name="The Well", id=705, min=87, max=90, indoor=true }  -- 72 spawns
@@ -681,7 +665,6 @@ add{ short="kaelshard", name="Kael Drakkel: The King's Madness", id=754, min=97,
 add{ short="poshadow", name="Plane of Shadow", cat="nodata" }  -- no spawn data
 add{ short="shardslanding", name="Shard's Landing", id=752, min=95, max=99, indoor=true, hot=100 }  -- 838 spawns
 add{ short="breedinggrounds", name="The Breeding Grounds", id=757, min=99, max=102 }  -- 260 spawns
-add{ short="burnedwoods", name="The Burned Woods", emuOnly=true }  -- no spawn data
 add{ short="crystalshard", name="The Crystal Caverns: Fragment of Fear", id=756, min=96, max=99 }  -- 238 spawns
 add{ short="pomischief", name="The Plane of Mischief" }  -- no spawn data
 add{ short="xorbb", name="Valley of King Xorbb", id=753, min=99, max=101, indoor=true }  -- 777 spawns
@@ -712,7 +695,7 @@ add{ short="thuliasaur", name="Thuliasaur Island", min=105, max=107 }  -- Alla: 
 exp = "TBM"
 
 add{ short="cosul", name="Crypt of Sul", min=105, max=107 }  -- Alla: 26 NPCs
-add{ short="codecayb", name="Ruins of Lxanvom", min=106, max=108 }  -- Alla: 47 NPCs
+add{ short="codecayb", name="Ruins of Lxanvom 2.0", min=106, max=108 }  -- Alla: 47 NPCs
 add{ short="exaltedb", name="Sul Vius: Demiplane of Decay", min=105, max=107 }  -- Alla: 93 NPCs
 add{ short="exalted", name="Sul Vius: Demiplane of Life", min=105, max=106 }  -- Alla: 47 NPCs
 add{ short="pohealth", name="The Plane of Health", min=105, max=106 }  -- Alla: 28 NPCs
@@ -720,23 +703,23 @@ add{ short="pohealth", name="The Plane of Health", min=105, max=106 }  -- Alla: 
 --===== EoK : 7 zones =====
 exp = "EoK"
 
-add{ short="chardoktwo", name="Chardok", min=106, max=108 }  -- Alla: 90 NPCs
-add{ short="frontiermtnsb", name="Frontier Mountains", min=103, max=106 }  -- Alla: 105 NPCs
+add{ short="chardoktwo", name="Chardok 2.0", min=106, max=108 }  -- Alla: 90 NPCs
+add{ short="frontiermtnsb", name="Frontier Mountains 2.0", min=103, max=106 }  -- Alla: 105 NPCs
 add{ short="korshaext", name="Gates of Kor-Sha", min=99, max=106 }  -- Alla: 28 NPCs
 add{ short="korshaint", name="Kor-Sha Laboratory", min=106, max=108 }  -- Alla: 39 NPCs
 add{ short="lceanium", name="Lceanium", min=105, max=107 }  -- Alla: 35 NPCs
 add{ short="scorchedwoods", name="Scorched Woods", min=103, max=106 }  -- Alla: 78 NPCs
-add{ short="drogab", name="Temple of Droga", min=106, max=108 }  -- Alla: 106 NPCs
+add{ short="drogab", name="Temple of Droga 2.0", min=106, max=108 }  -- Alla: 106 NPCs
 
 --===== RoS : 6 zones =====
 exp = "RoS"
 
 add{ short="gorowyn", name="Gorowyn", min=110, max=113 }  -- Alla: 56 NPCs
-add{ short="charasistwo", name="Howling Stones", min=110, max=113 }  -- Alla: 24 NPCs
+add{ short="charasistwo", name="Howling Stones 2.0", min=110, max=113 }  -- Alla: 24 NPCs
 add{ short="charasisb", name="Sathir's Tomb", min=110, max=113 }  -- Alla: 46 NPCs
-add{ short="skyfiretwo", name="Skyfire Mountains", min=110, max=113 }  -- Alla: 75 NPCs
-add{ short="overtheretwo", name="The Overthere", min=109, max=111 }  -- Alla: 52 NPCs
-add{ short="veeshantwo", name="Veeshan's Peak", min=110, max=113 }  -- Alla: 26 NPCs
+add{ short="skyfiretwo", name="Skyfire Mountains 2.0", min=110, max=113 }  -- Alla: 75 NPCs
+add{ short="overtheretwo", name="The Overthere 2.0", min=109, max=111 }  -- Alla: 52 NPCs
+add{ short="veeshantwo", name="Veeshan's Peak 2.0", min=110, max=113 }  -- Alla: 26 NPCs
 
 --===== TBL : 8 zones =====
 exp = "TBL"
@@ -753,20 +736,20 @@ add{ short="chamberoftears", name="The Chamber of Tears", min=95, max=112 }  -- 
 --===== ToV : 7 zones =====
 exp = "ToV"
 
-add{ short="crystaltwob", name="Crystal Caverns", min=112, max=115 }  -- Alla: 21 NPCs
+add{ short="crystaltwob", name="Crystal Caverns 2.0", min=112, max=115 }  -- Alla: 21 NPCs
 add{ short="kaeltwo", name="Kael Drakkel", min=114, max=116 }  -- Alla: 312 NPCs
 add{ short="eastwastestwo", name="The Eastern Wastes", min=113, max=115 }  -- Alla: 34 NPCs
 add{ short="greatdividetwo", name="The Great Divide", min=113, max=116 }  -- Alla: 36 NPCs
 add{ short="crystaltwoa", name="The Ry`Gorr Mines", min=113, max=115 }  -- Alla: 17 NPCs
 add{ short="frozenshadowtwo", name="The Tower of Frozen Shadow", min=113, max=115 }  -- Alla: 51 NPCs
-add{ short="velketortwo", name="Velketor's Labyrinth", min=113, max=115 }  -- Alla: 25 NPCs
+add{ short="velketortwo", name="Velketor's Labyrinth 2.0", min=113, max=115 }  -- Alla: 25 NPCs
 
 --===== CoV : 6 zones =====
 exp = "CoV"
 
-add{ short="cobaltscartwo", name="Cobalt Scar", min=112, max=115 }  -- Alla: 36 NPCs
-add{ short="necropolistwo", name="Dragon Necropolis", min=112, max=115 }  -- Alla: 33 NPCs
-add{ short="skyshrinetwo", name="Skyshrine", min=112, max=118 }  -- Alla: 22 NPCs
+add{ short="cobaltscartwo", name="Cobalt Scar 2.0", min=112, max=115 }  -- Alla: 36 NPCs
+add{ short="necropolistwo", name="Dragon Necropolis 2.0", min=112, max=115 }  -- Alla: 33 NPCs
+add{ short="skyshrinetwo", name="Skyshrine 2.0", min=112, max=118 }  -- Alla: 22 NPCs
 add{ short="sleepertwo", name="The Sleeper's Tomb", min=113, max=116 }  -- Alla: 28 NPCs
 add{ short="templeveeshantwo", name="The Temple of Veeshan", min=112, max=116 }  -- Alla: 27 NPCs
 add{ short="westwastestwo", name="The Western Wastes", min=112, max=113 }  -- Alla: 16 NPCs
@@ -780,7 +763,7 @@ add{ short="akhevatwo", name="Ka Vethan", min=118, max=119 }  -- Alla: 24 NPCs
 add{ short="maidentwo", name="Maiden's Eye", min=115, max=117 }  -- Alla: 44 NPCs
 add{ short="shadowvalley", name="Shadow Valley", min=118, max=120 }  -- Alla: 48 NPCs
 add{ short="umbraltwo", name="Umbral Plains", min=116, max=119 }  -- Alla: 44 NPCs
-add{ short="vexthaltwo", name="Vex Thal", min=118, max=120 }  -- Alla: 74 NPCs
+add{ short="vexthaltwo", name="Vex Thal 2.0", min=118, max=120 }  -- Alla: 74 NPCs
 
 --===== NoS : 8 zones =====
 exp = "NoS"
@@ -834,7 +817,7 @@ zones.hotPool = {
     { level = 35, active = 1, { name = "Great Divide", short = "greatdivide" }, { name = "Stone Hive", short = "stonehive" }, { name = "Dreadlands", short = "dreadlands" } },
     { level = 40, active = 1, { name = "Mons Letalis", short = "letalis" }, { name = "City of Mist", short = "citymist" }, { name = "The Emerald Jungle", short = "emeraldjungle" } },
     { level = 45, active = 1, { name = "Dulak's Harbor", short = "dulak" }, { name = "Dranik's Scar", short = "draniksscar" }, { name = "The Scarlet Desert", short = "scarlet" } },
-    { level = 50, active = 3, { name = "Velketor's Labyrinth", short = "velketor" }, { name = "Old Sebilis", short = "sebilis" }, { name = "Skyfire Mountains", short = "skyfire" } },
+    { level = 50, active = 3, { name = "Velketor's Labyrinth 1.0", short = "velketor" }, { name = "Old Sebilis", short = "sebilis" }, { name = "Skyfire Mountains 1.0", short = "skyfire" } },
     { level = 55, active = 3, { name = "The Deep", short = "thedeep" }, { name = "Plane of Innovation", short = "poinnovation" }, { name = "Riwwi, Coliseum of Games", short = "riwwi" } },
     { level = 60, active = 3, { name = "Veksar", short = "veksar" }, { name = "Blackfeather Roost", short = "roost" }, { name = "Barindu, Hanging Gardens", short = "barindu" } },
     { level = 65, active = 3, { name = "Barren Coast", short = "barren" }, { name = "Drunder, Fortress of Zek", short = "potactics" }, { name = "Torden, The Bastion of Thunder", short = "bothunder" } },

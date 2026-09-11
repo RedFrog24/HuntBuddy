@@ -8,13 +8,16 @@ HuntBuddy is a zone reference for Live and EMU. Every zone in the game in one so
 range, experience modifier, hot zone status — with filters to narrow it to somewhere worth your time,
 and a Go button to take you there.
 
-- **All 33 expansions**, Classic through Shattering of Ro — 571 zones
+- **All 33 expansions**, Classic through Shattering of Ro — 554 zones
 - **Sort by name, level or ZEM**, filter by level band, expansion, indoor/outdoor and more
 - **Hot Zone tab** showing all three possible hot zones for every bracket from 20 to 105
 - **Travel to any zone** with one click (needs MQ2EasyFind), including group travel
 - **Mark favourites and your own "good money here" zones** — saved between sessions
-- **Live and EMU aware** — EMU caps at Dragons of Norrath, and zones your client can't load are hidden
-  on Live
+- **Live and EMU aware** — EMU caps at Dragons of Norrath, and zones you cannot enter on Live are
+  hidden there
+- **Revamped zones are labelled** — where a zone exists in two generations it is named **1.0** (the
+  classic one) and **2.0** (the version that replaced it), so you can tell at a glance which you are
+  looking at. **Settings → Show all zone versions** un-hides the ones your server may still have
 - **Eleven themes**, including four map-and-atlas palettes
 
 ## The zone data

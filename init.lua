@@ -3,6 +3,20 @@
 -- Original creation date: 03/23/2024
 -- Version controlled by `version` below (single source of truth - drives window title).
 -- Changelog:
+-- 2.34:   Settings text rewritten. It named the nine zones that exist in two generations; there are
+--         24, and any list of them goes stale the moment one is added. It now explains the naming
+--         convention instead - 1.0 is the classic zone, 2.0 the one that replaced it - which is
+--         what the user needs and cannot go out of date.
+-- 2.33:   Hunting Only gets a tooltip. It is the one filter whose name does not explain it: the
+--         others say what they do, this one hides zones by a judgement about whether you go there
+--         to kill things. The tooltip also says what it does NOT hide - a zone with no level data
+--         is kept, because that is a gap in the zone data, not an empty zone.
+-- 2.32:   Settings gains "Show all zone versions". Nine zones exist in two generations - the
+--         classic one and the version that replaced it (Freeport x3, Steamfont, Plane of Hate,
+--         Innothule, Misty Thicket, North/South Ro, Toxxulia) - and on Live the classic half is a
+--         zone you cannot enter, so it is hidden. EMU servers vary over which generation they run,
+--         and a mis-flagged zone would otherwise be invisible with no way to reach it, so the hide
+--         is now overridable. Off by default: correct for almost everyone, escapable by anyone.
 -- 2.17:   Help tab explains why LDoN zones show 15-75 (adventures scale to your level).
 -- 2.16:   Hunting Only toggle - hides zones that are real but are not places you hunt (mission
 --         instances, loading zones, guild halls, housing, arenas). `nodata` is NOT hidden by it:
@@ -80,7 +94,7 @@ local ImGui = require('ImGui')
 local Icons = require('mq.ICONS')
 local zones = require('huntbuddy.zones')
 
-local version = "2.31"
+local version = "2.34"
 
 --========================
 -- Header icon centering
@@ -151,6 +165,9 @@ local showHotzonesOnly, removeCities = false, false
 local showPlatinumOnly, showFavoritesOnly = false, false
 local showExpansionOnly, showOutdoorOnly = false, false
 local showHuntableOnly = false
+-- Overrides the Live-only hide of `emuOnly` zones (Settings, not the Zones tab: it is a preference
+-- about your server, not a filter you flip while browsing). See the filter in zonePassesFilters.
+local showAllVersions = false
 -- Clicked-row highlight. Keyed on shortName+expansion, not shortName alone: the file's invariant is
 -- unique (shortName + expansion), so a bare short name can collide. Purely visual - it marks your
 -- place while scanning and drives nothing else.
@@ -805,6 +822,7 @@ local function LoadSettings()
     end
 
     groupTravel = mq.TLO.Ini(settingsFile, "Settings", "GroupTravel")() == "1"
+    showAllVersions = mq.TLO.Ini(settingsFile, "Settings", "ShowAllVersions")() == "1"
     for i, zone in ipairs(zones.zones) do
         local missing = missingRequiredFields(zone)
         if missing then
@@ -848,15 +866,19 @@ local function SaveTravelSetting()
     mq.cmdf('/ini "%s" "Settings" "GroupTravel" "%d"', settingsFile, groupTravel and 1 or 0)
 end
 
+local function SaveShowAllVersionsSetting()
+    mq.cmdf('/ini "%s" "Settings" "ShowAllVersions" "%d"', settingsFile, showAllVersions and 1 or 0)
+end
+
 local function ResetFilters()
     filterName, filterZemMin, filterZemMax = "", 0.0, 5.0
     filterLevelMin, filterLevelMax = 1, highestZoneLevel()
     selectedExpansion = "Live"
     showHotzonesOnly, removeCities = false, false
     useShortNames = false
-    -- serverMode is deliberately NOT reset: it is a preference (like the theme, which Reset also
-    -- leaves alone), not a filter. It used to be reset here without persisting, so the ini kept the
-    -- old value and the next launch silently reverted.
+    -- serverMode is deliberately NOT reset: it is a preference (like the theme and Show All Zone
+    -- Versions, which Reset also leaves alone), not a filter. It used to be reset here without
+    -- persisting, so the ini kept the old value and the next launch silently reverted.
     showPlatinumOnly, showFavoritesOnly = false, false
     showExpansionOnly, showOutdoorOnly = false, false
     showHuntableOnly = false
@@ -1083,9 +1105,13 @@ local function zonePassesFilters(zone, maxExpansionLevel)
     -- carry it, and hiding them would erase the modern game.
     if showHuntableOnly and zone.category and zone.category ~= "nodata" then return false end
 
-    -- A zone this client ships no files for cannot be entered on Live, whatever the filters say.
-    -- Not a toggle - it is correctness, not preference.
-    if serverMode == "Live" and zone.emuOnly then return false end
+    -- `emuOnly` marks a zone you cannot enter on Live. It covers two cases: the client ships no
+    -- files for it, and - the larger group - it is the classic half of a pair whose replacement is
+    -- what Live actually runs (freporte vs freeporteast). The second kind still ships its old .s3d,
+    -- so only the zone data knows, and the zone data can be wrong.
+    -- Hence the override: default off, because hiding is right for almost everyone, but a user on a
+    -- server we guessed wrong about would otherwise have no way to reach the zone at all.
+    if serverMode == "Live" and zone.emuOnly and not showAllVersions then return false end
 
     -- A zone with no derived range has levelmax = 0, which is NOT "level 0" - it means PEQ had no
     -- spawn rows for it. Comparing it against the slider hides it in every mode with no way to turn
@@ -1222,13 +1248,19 @@ local function toggleColumnRightX()
     return toggleColumnX() + toggleLabelWidth() + ImGui.CalcTextSize(Icons.FA_TOGGLE_ON or "[ ]")
 end
 
-local function drawToggle(label, value, id, labelWidth)
+local function drawToggle(label, value, id, labelWidth, tip, tipSub)
     local startX = ImGui.GetCursorPosX()
     ImGui.Text(label)
+    -- Tip on the LABEL too, not just the glyph: the label is the wider target and the part a user
+    -- reads, so it is where the pointer already is when they wonder what the filter does.
+    if tip then hoverTip(tip, tipSub) end
     if labelWidth then ImGui.SameLine(startX + labelWidth) else ImGui.SameLine() end
     ImGui.PushID(id)
     ImGui.TextColored(value and COLOR_ON or COLOR_OFF, value and Icons.FA_TOGGLE_ON or Icons.FA_TOGGLE_OFF)
+    -- Read the click BEFORE drawing the tooltip. hoverTip submits a tooltip window, after which
+    -- IsItemHovered() no longer refers to the glyph - the toggle would stop responding.
     if ImGui.IsItemHovered() and ImGui.IsMouseClicked(0) then value = not value end
+    if tip then hoverTip(tip, tipSub) end
     ImGui.PopID()
     return value
 end
@@ -1364,7 +1396,10 @@ local function drawToggles()
     showOutdoorOnly   = drawToggle("Outdoor Only:",   showOutdoorOnly,   "showOutdoorOnly", labelWidth)
 
     ImGui.SetCursorPosX(leftOffset)
-    showHuntableOnly  = drawToggle("Hunting Only:",   showHuntableOnly,  "showHuntableOnly", labelWidth)
+    showHuntableOnly  = drawToggle("Hunting Only:",   showHuntableOnly,  "showHuntableOnly", labelWidth,
+        "Hide zones that are not places you go to kill things.",
+        "Mission hubs, arenas, guild halls, cities, housing\nand loading zones are hidden.\n" ..
+        "Zones with no level data are KEPT - that is a gap\nin the zone data, not an empty zone.")
     ImGui.SameLine(midOffset)
     useShortNames     = drawToggle("Short Names:",    useShortNames,     "useShortNames", labelWidth)
 end
@@ -1389,6 +1424,7 @@ local function buildSignature()
         tostring(useShortNames), tostring(showHotzonesOnly), tostring(removeCities),
         tostring(showPlatinumOnly), tostring(showFavoritesOnly),
         tostring(showExpansionOnly), tostring(showOutdoorOnly), tostring(showHuntableOnly),
+        tostring(showAllVersions),
     }, "")
 end
 
@@ -1653,6 +1689,23 @@ local function drawSettingsTab()
     sectionHeading("Appearance")
     drawThemePicker()
     ImGui.TextDisabled("Applies instantly and is saved to HuntBuddySettings.ini.")
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    sectionHeading("Zone list")
+    local wasAll = showAllVersions
+    showAllVersions = drawToggle("Show all zone versions:", showAllVersions, "showAllVersions")
+    if showAllVersions ~= wasAll then SaveShowAllVersionsSetting() end
+    hoverTip("Show zones that were replaced by a newer version.",
+             "Only affects Live - EMU already shows both.")
+    -- Deliberately NOT a list of the zones. It was one, written when there were nine; there are 24,
+    -- and the count moved three times in a day. Explaining the naming instead cannot go stale.
+    ImGui.TextWrapped("Zones that exist in two generations are named 1.0 and 2.0 - 1.0 is the " ..
+        "classic zone, 2.0 the version that replaced it. On Live the 1.0 half is usually a zone " ..
+        "you cannot enter, so it is hidden.")
+    ImGui.TextWrapped("Turn this on if your server runs the other generation, or if a zone you " ..
+        "know exists is missing from the list.")
     ImGui.Spacing()
 end
 
