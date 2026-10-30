@@ -3,6 +3,18 @@
 -- Original creation date: 03/23/2024
 -- Version controlled by `version` below (single source of truth - drives window title).
 -- Changelog:
+-- 2.38:   Dropped the `_` minimize button. It worked, but a tab bar is for tabs - a control parked
+--         in one reads as a tab that will not open. Minimize is the map icon or /huntbuddy.
+-- 2.37:   Three ways to minimize instead of one. A `_` sits at the right end of the tab bar,
+--         directly under the X (ImGui will not let a button into the native title bar itself);
+--         the map icon in the filter block is now click-to-minimize; and the mini bar wears that
+--         same map icon rather than a generic glyph, so the thing you click to shrink is the thing
+--         you click to restore.
+-- 2.36:   Minimize, and the slash command it needed. `/huntbuddy` toggles a small bar; while a
+--         route is running the bar carries the destination plus Pause and Stop, so the 600x800
+--         zone table can get out of the way without losing control of the travel it started.
+--         The script had NO bind at all before this - the X stopped it and nothing could hide it,
+--         so a minimize would have been a one-way trip.
 -- 2.35:   The Theme and Server dropdowns wrote the ini on EVERY frame they were open. MQ's
 --         ImGui.Selectable returns (selected, pressed), and `if ImGui.Selectable(...)` tested the
 --         first - true every frame for the row already chosen. Theme, Server and Expansion now act
@@ -98,7 +110,7 @@ local ImGui = require('ImGui')
 local Icons = require('mq.ICONS')
 local zones = require('huntbuddy.zones')
 
-local version = "2.35"
+local version = "2.38"
 
 --========================
 -- Header icon centering
@@ -164,6 +176,14 @@ end
 
 local filterLevelMin, filterLevelMax = 1, highestZoneLevel()
 local openGUI, useShortNames = true, false
+-- Minimized draws renderMini instead of the main window. The mini bar has no title bar and so no X,
+-- which is why the bind at the bottom also accepts `quit` - otherwise minimizing would leave no way
+-- to stop the script.
+local minimized = false
+-- Where /travelto was sent, so the mini bar can name it. Deliberately NOT derived from nav state:
+-- EasyFind routes multi-hop and nav goes inactive between zones, which would blink the bar back to
+-- idle mid-journey. Set on Go, cleared on Stop and on arrival (main loop).
+local travelTarget = nil
 local selectedExpansion, currentTheme, serverMode = "Live", "Meridian", "Live"
 local showHotzonesOnly, removeCities = false, false
 local showPlatinumOnly, showFavoritesOnly = false, false
@@ -1166,7 +1186,8 @@ local function travellingAsGroup()
     return groupTravel and (mq.TLO.Group.Leader.ID() or 0) > 0
 end
 
-local function travelTo(shortName)
+local function travelTo(shortName, displayName)
+    travelTarget = { short = (shortName or ""):lower(), name = displayName or shortName }
     if travellingAsGroup() then
         mq.cmdf('/travelto group %s', shortName)
     else
@@ -1201,6 +1222,7 @@ local function travelPauseToggle()
 end
 
 local function travelStop()
+    travelTarget = nil
     mq.cmd('/travelto stop')
     if travellingAsGroup() then
         mq.cmd('/dgae /travelto stop')
@@ -1357,6 +1379,11 @@ local function drawFilterInputs()
                                filterLabelWidth + 250 + style.ItemSpacing.x)
         ImGui.SetCursorPos(ImVec2(iconX, filterTopY))
         ImGui.Image(mapIcon:GetTextureID(), ImVec2(iconSize, iconSize))
+        -- Click-to-minimize, the way croakwatch's frog works. The same icon is what the mini bar
+        -- wears, so the thing you click to shrink is the thing you click to restore - it teaches
+        -- itself without a label. Decoration that became a control, so it needs the tooltip.
+        if ImGui.IsItemClicked() then minimized = true end
+        hoverTip("Click the map to minimize.", "/huntbuddy restores it, or click the bar.")
         ImGui.SetCursorPosY(rowsEndY)   -- put the cursor back so the Expansion row lands normally
     end
 
@@ -1673,7 +1700,7 @@ local function drawZoneTable(visibleZones)
                 ImGui.PushStyleColor(ImGuiCol.ButtonActive,  COLOR_TRANSPARENT)
                 centerNextItemInCell(30)
                 if ImGui.Button(Icons.FA_PLAY or ">", ImVec2(30, 20)) then
-                    travelTo(zone.shortName)
+                    travelTo(zone.shortName, zone.fullName or zone.shortName)
                 end
                 ImGui.PopStyleColor(3)
                 ImGui.PopID()
@@ -1751,6 +1778,8 @@ local function drawHelpTab()
     section("Getting started", function()
         twoColumn({
             { "/lua run huntbuddy", nil, "start HuntBuddy" },
+            { "/huntbuddy",         nil, "minimize to a small bar, or restore it" },
+            { "/huntbuddy quit",    nil, "stop the script (the window X does the same)" },
         })
     end)
 
@@ -1987,14 +2016,85 @@ local function DrawZoneSelector()
     popTheme(ColorCount, StyleCount)
 end
 
+-- The minimized bar. EQ's own UI already fills the screen with windows, so a reference tool that
+-- cannot get out of the way is a window you close rather than keep - and closing this one stops it.
+--
+-- Idle it is just a restore button. It earns its place while TRAVELLING: the 600x800 zone table is
+-- exactly what you do not want on screen while walking, but Pause and Stop are exactly what you do,
+-- so they come with it. No art - HuntBuddy ships no assets and this keeps it that way; the glyph is
+-- from MQ's bundled set, guarded like every other icon here in case a build lacks it.
+local function renderMini()
+    local ColorCount, StyleCount = pushTheme()
+    ImGui.SetNextWindowBgAlpha(0.85)
+    local _, shouldDraw = ImGui.Begin("##HuntBuddyMini", true,
+        ImGuiWindowFlags.NoTitleBar + ImGuiWindowFlags.AlwaysAutoResize + ImGuiWindowFlags.NoScrollbar)
+    if shouldDraw then
+        -- Read once: Stop clears travelTarget mid-frame, and the rest of the row must not change
+        -- shape underneath itself after that.
+        local target = travelTarget
+        -- The same map icon the main window shows, so the badge is recognisably HuntBuddy rather
+        -- than a generic glyph. It comes from the USER's own uiresources folder, not from us, so it
+        -- can legitimately be absent - the glyph stays as the fallback and nothing ships either way.
+        local mapIcon = getMapIcon()
+        if mapIcon then
+            ImGui.Image(mapIcon:GetTextureID(), ImVec2(20, 20))
+            if ImGui.IsItemClicked() then minimized = false end
+            ImGui.SameLine(0, 4)
+        end
+        if ImGui.Button((mapIcon and "" or ((Icons.FA_MAP_O or "HB") .. "  ")) ..
+                        (target and ("-> " .. target.name) or "HuntBuddy")) then
+            minimized = false
+        end
+        hoverTip(target and ("Travelling to " .. target.name) or "HuntBuddy",
+                 "Click to open. /huntbuddy toggles this bar.")
+        if target then
+            -- Same rule as the travel bar: Pause is inert with no route, so it is only offered
+            -- while one exists. Nav state is read live, never tracked in a flag of our own.
+            local paused = navIsPaused()
+            if paused or navIsActive() then
+                ImGui.SameLine()
+                if ImGui.SmallButton(paused and "Resume" or "Pause") then travelPauseToggle() end
+                hoverTip(paused and "Resume the paused route." or "Stop moving but keep the route.")
+            end
+            ImGui.SameLine()
+            if ImGui.SmallButton("Stop") then travelStop() end
+            hoverTip("Abandon the route.")
+        end
+    end
+    -- End unconditionally, and pop what pushTheme actually pushed - never a re-evaluated condition.
+    ImGui.End()
+    popTheme(ColorCount, StyleCount)
+end
+
+local function renderUI()
+    if minimized then renderMini() else DrawZoneSelector() end
+end
+
 --========================
 -- Main
 --========================
+mq.bind('/huntbuddy', function(arg)
+    local a = (arg or ""):lower()
+    -- `quit` matters: minimized there is no title bar and so no X, which is the only other way out.
+    if a == "quit" or a == "exit" then openGUI = false
+    elseif a == "show" or a == "open" then minimized = false
+    elseif a == "hide" or a == "min" then minimized = true
+    else minimized = not minimized end
+end)
+
 local function main()
     LoadSettings()
     buildClassicLivePairs()
-    mq.imgui.init("HuntBuddy", DrawZoneSelector)
-    while openGUI do mq.delay(100) end
+    mq.imgui.init("HuntBuddy", renderUI)
+    while openGUI do
+        -- Arrival clears the destination, so the mini bar stops offering Pause/Stop for a journey
+        -- that is over. Compared against the zone we asked for rather than nav going idle, which
+        -- happens at every hop of a multi-zone EasyFind route.
+        if travelTarget and (mq.TLO.Zone.ShortName() or ""):lower() == travelTarget.short then
+            travelTarget = nil
+        end
+        mq.delay(100)
+    end
 end
 
 main()
