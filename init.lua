@@ -3,6 +3,10 @@
 -- Original creation date: 03/23/2024
 -- Version controlled by `version` below (single source of truth - drives window title).
 -- Changelog:
+-- 2.35:   The Theme and Server dropdowns wrote the ini on EVERY frame they were open. MQ's
+--         ImGui.Selectable returns (selected, pressed), and `if ImGui.Selectable(...)` tested the
+--         first - true every frame for the row already chosen. Theme, Server and Expansion now act
+--         on `pressed` only. (The zone-row Selectable was always correct: its `selected` is false.)
 -- 2.34:   Settings text rewritten. It named the nine zones that exist in two generations; there are
 --         24, and any list of them goes stale the moment one is added. It now explains the naming
 --         convention instead - 1.0 is the classic zone, 2.0 the one that replaced it - which is
@@ -94,7 +98,7 @@ local ImGui = require('ImGui')
 local Icons = require('mq.ICONS')
 local zones = require('huntbuddy.zones')
 
-local version = "2.34"
+local version = "2.35"
 
 --========================
 -- Header icon centering
@@ -1272,7 +1276,10 @@ local function drawThemePicker()
     if ImGui.BeginCombo("##Theme", currentTheme) then
         for _, name in ipairs(THEME_NAMES) do
             local isSelected = (name == currentTheme)
-            if ImGui.Selectable(name, isSelected) then
+            -- Selectable returns (selected, pressed). The first is true every frame for the theme
+            -- already chosen, which wrote the ini on every frame the list was open.
+            local _, pressed = ImGui.Selectable(name, isSelected)
+            if pressed then
                 currentTheme = name
                 SaveThemeSetting()
             end
@@ -1294,7 +1301,8 @@ local function drawServerPicker()
         -- is just adding its name to SERVER_MODES.
         for _, mode in ipairs(SERVER_MODES) do
             local isSelected = (mode == serverMode)
-            if ImGui.Selectable(mode, isSelected) then
+            local _, pressed = ImGui.Selectable(mode, isSelected)
+            if pressed then
                 serverMode = mode
                 SaveServerSetting()
             end
@@ -1357,7 +1365,8 @@ local function drawFilterInputs()
     if ImGui.BeginCombo("##Expansion", selectedExpansion) then
         for _, exp in ipairs(zones.expansionList) do
             local isSelected = (exp == selectedExpansion)
-            if ImGui.Selectable(exp, isSelected) then selectedExpansion = exp end
+            local _, pressed = ImGui.Selectable(exp, isSelected)
+            if pressed then selectedExpansion = exp end
             if isSelected then ImGui.SetItemDefaultFocus() end
         end
         ImGui.EndCombo()
