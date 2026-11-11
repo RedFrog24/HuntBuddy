@@ -2,7 +2,53 @@
 -- Created by: RedFrog
 -- Original creation date: 03/23/2024
 -- Version controlled by `version` below (single source of truth - drives window title).
--- Changelog:
+-- 2.45:   Two defensive changes from the pre-release review. NO behaviour change on any data this
+--         project can currently produce - both were written up as live bugs first and that was
+--         wrong, because zones.lua builds every row through one constructor that defaults every
+--         field, so neither scenario is reachable. Kept because both are the safer form and the
+--         assumption is now written down. (1) Outdoor Only tests `indoor == true` instead of
+--         `~= false`, so a zone with an ABSENT indoor flag would stay visible rather than be
+--         hidden - the level filter below is the standing reminder of what reading missing data as
+--         a verdict costs. (2) The dev-only release gate now checks the union of its own field
+--         list and init.lua's ZONE_REQUIRED, and reads that declaration as text to fail loudly if
+--         the two ever diverge again - which is the part that genuinely earns its keep, since a
+--         future required field that the constructor does NOT default would otherwise go
+--         unchecked.
+-- 2.44:   HotZone tab: the "Verified against Franklin Teek" line was cut off mid-word at the window
+--         edge instead of wrapping. It used TextDisabled, which does not wrap - MQ's binding docs
+--         describe it as PushStyleColor + plain Text() + PopStyleColor, and plain Text() never
+--         wraps. Replaced with that same decomposition using TextWrapped, reading the colour from
+--         the active theme so it still greys correctly under all 11 themes. Reported by AL.
+-- 2.43:   Help tab now says what the flame actually means. It marks zones that were hot when the
+--         data was captured, not necessarily right now: each level bracket has three possible hot
+--         zones with one active, and the published sources contradict each other on how often the
+--         active one changes (quarterly, per patch, or daily per server - all three are claimed).
+--         So the text gives the capture date and points at Franklin Teek for the live answer, which
+--         is what the game's own hot zone message tells you to do. A second line says the flag is
+--         Live data, because EMU servers set their own hot zones and an EMU user was being shown
+--         Live's list with nothing saying so.
+-- 2.42:   Housekeeping, no behaviour change. Two comments pointed at files that only exist on the
+--         developer's machine - the retired zone table and the release-gate script - so anyone
+--         reading the shipped file was sent looking for something they do not have. Both now state
+--         the point directly instead.
+-- 2.41:   Group Travel now says so when MQ2DanNet is missing. The two halves of group travel run
+--         on different plugins: starting a route is EasyFind's own /travelto group, which uses
+--         whatever group plugin you configured, while Pause and Stop are /dgge and need DanNet. So
+--         a route could start for the whole group and then stop for nobody but you, silently. One
+--         notice when you switch the toggle on - never an auto-load, because DanNet is only needed
+--         while that toggle is on and your MQ setup is not ours to change for a feature you may
+--         never use.
+-- 2.40:   Group Pause skipped the driver. /nav pause is a TOGGLE - MQ2Nav has no `off` - and the
+--         toggle was sent directly AND again through /dgae, which includes own, so this character
+--         toggled twice and ended where it started while the rest of the group paused. Pause and
+--         Stop now broadcast with /dgge, which excludes own. /dgae was wrong twice over: it takes
+--         a DanNet CHANNEL name as its first argument, so it had been reading `/squelch` and
+--         `/travelto` as channel names and reaching nobody since 2.14.
+-- 2.39:   Travel loads MQ2EasyFind itself instead of only reporting it missing, since /travelto
+--         drives the Go button on every row and the whole travel bar. Loaded with `noauto` so it
+--         is not written into your MacroQuest.ini for every character, and never unloaded, since
+--         by then something else may be using it. The plugin check also moved from reading .Name()
+--         to .IsLoaded() - a boolean question deserves a boolean answer.
 -- 2.38:   Dropped the `_` minimize button. It worked, but a tab bar is for tabs - a control parked
 --         in one reads as a tab that will not open. Minimize is the map icon or /huntbuddy.
 -- 2.37:   Three ways to minimize instead of one. A `_` sits at the right end of the tab bar,
@@ -110,7 +156,7 @@ local ImGui = require('ImGui')
 local Icons = require('mq.ICONS')
 local zones = require('huntbuddy.zones')
 
-local version = "2.38"
+local version = "2.45"
 
 --========================
 -- Header icon centering
@@ -805,7 +851,7 @@ end
 -- Favorites and Platinum persist to the ini keyed on shortName - but a short name is NOT unique.
 -- `neriakd` is both Classic "Neriak Palace" and CotF "Neriak - Fourth Gate", so starring one of them
 -- starred the other on the next load: same key, same value. The file's real uniqueness invariant is
--- (shortName + expansion), which is why validate_zones.lua enforces that pair.
+-- (shortName + expansion), and that pair is checked against the whole table before every release.
 --
 -- Only the genuinely colliding short names get the compound key. Keying EVERYTHING on
 -- shortName|expansion would be cleaner in the abstract and would silently wipe every existing
@@ -1120,7 +1166,15 @@ local function zonePassesFilters(zone, maxExpansionLevel)
     if removeCities and zone.city then return false end
     if showFavoritesOnly and not zone.isFavorite then return false end
     if showPlatinumOnly and not zone.isPlatinum then return false end
-    if showOutdoorOnly and zone.indoor ~= false then return false end
+    -- `== true` rather than `~= false`. The two differ ONLY for a zone whose `indoor` is absent,
+    -- and with today's data file that cannot happen: zones.lua builds every row through one `add{}`
+    -- constructor that writes `indoor = t.indoor or false`, so the field is always a real boolean
+    -- (554 of 554 rows carry it, 330 true / 224 false). So this is not a bug fix and nothing
+    -- changes - it is the defensive form, chosen because `~= false` reads missing data as "not
+    -- outdoor" and the level filter below is a standing reminder of what that costs when the
+    -- assumption stops holding. If a hand-edited or differently generated zones.lua ever omits the
+    -- flag, an unknown zone stays visible instead of vanishing.
+    if showOutdoorOnly and zone.indoor == true then return false end
 
     -- Hunting Only hides zones that are real but are not places you go to kill things - the
     -- Muramite Proving Grounds, loading zones, guild halls, player housing, arenas.
@@ -1176,8 +1230,33 @@ end
 -- and says why.
 
 local function easyFindLoaded()
-    local name = mq.TLO.Plugin("MQ2EasyFind").Name()
-    return name ~= nil and name ~= ""
+    -- IsLoaded, not Name. MQ resolves Plugin[name] against the list of LOADED plugins, and
+    -- IsLoaded is the single member it still answers when that lookup found nothing - every
+    -- other member, Name included, comes back NULL. So this asks a boolean question and gets a
+    -- real boolean, rather than inferring "not loaded" from an empty string.
+    return mq.TLO.Plugin("MQ2EasyFind").IsLoaded() == true
+end
+
+-- Load it, rather than only reporting it missing. /travelto drives the Go button on every row
+-- and the whole travel bar, so without the plugin the most visible control in the window is
+-- dead. `noauto` is what keeps that polite - without it MQ writes the plugin into the user's
+-- MacroQuest.ini and loads it for every character forever, and their config is not ours to
+-- change. Nothing unloads it on exit: an idle plugin costs nothing, and by then another script
+-- may be relying on it.
+--
+-- Startup only, and that is not a style preference. easyFindLoaded() is called twice per frame
+-- (the zone table and the travel bar), so a load attempt living inside it would fire at frame
+-- rate, and the verify wait below would be running mq.delay inside the ImGui render thread.
+local function ensureEasyFind()
+    if easyFindLoaded() then return end
+    mq.cmd('/plugin mq2easyfind load noauto')
+    -- mq.delay returns nil, never a boolean, so its result cannot be the test - re-read the
+    -- state afterwards. The DLL may simply not exist on this install, and the honest outcome is
+    -- a message naming what will not work.
+    mq.delay(5000, easyFindLoaded)
+    if not easyFindLoaded() then
+        mq.cmd('/echo HuntBuddy: could not load MQ2EasyFind - Go and the travel controls stay disabled.')
+    end
 end
 
 -- True only when we are actually in a group with a leader. The checkbox alone is not trusted -
@@ -1208,25 +1287,38 @@ local function navIsActive()
     return mq.TLO.Navigation.Active() == true
 end
 
--- /nav pause keeps the path; /nav pause off resumes it. Confirmed in TRAVEL_REFERENCE and pppoker.
--- Pausing with no active route just prints "[Nav] Navigation must be active to pause" and does
+-- `/nav pause` is a TOGGLE - MQ2Nav's own command reference says "Toggle pause on the current
+-- navigation path", and the plugin has no on/off sub-option (neither token appears in
+-- MQ2Nav.dll). So the old `pause` / `pause off` pair was one command written two ways, and it
+-- only behaved because the state is read first. One toggle now, and the button label already
+-- reads the live state to say Pause or Resume.
+--
+-- /dgge EXCLUDES self, and that is the whole fix. The old code sent the toggle to ourselves
+-- directly AND again through /dgae, which INCLUDES own - so the driver toggled twice and ended
+-- up exactly where it started, while the rest of the group paused once and stopped. Reported by
+-- AL from the field 2026-11-09, and the workaround found there (switch Group off, then Pause)
+-- is the proof: with the group line gone, one toggle lands.
+--
+-- /dgae was wrong for a second reason - it is `/dgaexecute <group> <command>` and takes a DanNet
+-- CHANNEL name, so it was reading `/squelch` as the channel. `/dgge` is the in-game group.
+--
+-- Self is sent directly rather than with /dgga so that our own character always halts even when
+-- DanNet is missing - the same reason travelStop below has always stopped self first.
+--
+-- Pausing with no active route just prints "Navigation must be active to pause" and does
 -- nothing, which is why the button is only live while a route exists.
 local function travelPauseToggle()
-    if navIsPaused() then
-        mq.cmd('/squelch /nav pause off')
-        if travellingAsGroup() then mq.cmd('/dgae /squelch /nav pause off') end
-    else
-        mq.cmd('/squelch /nav pause')
-        if travellingAsGroup() then mq.cmd('/dgae /squelch /nav pause') end
-    end
+    mq.cmd('/squelch /nav pause')
+    if travellingAsGroup() then mq.cmd('/dgge /squelch /nav pause') end
 end
 
 local function travelStop()
     travelTarget = nil
     mq.cmd('/travelto stop')
-    if travellingAsGroup() then
-        mq.cmd('/dgae /travelto stop')
-    end
+    -- /dgge for the same reason as the pause above: we have already stopped ourselves, so the
+    -- broadcast must exclude own. Stop is not a toggle, so the old double-send was harmless here
+    -- - but /dgae was still reading `/travelto` as its channel name and reaching nobody.
+    if travellingAsGroup() then mq.cmd('/dgge /travelto stop') end
 end
 
 --========================
@@ -1816,6 +1908,16 @@ local function drawHelpTab()
         tip("Hunting Only hides zones that exist but are not places you go to kill things - mission instances, loading zones, guild halls, housing and arenas.")
         tip("On Live, zones your client has no files for are hidden automatically. Switch to EMU to see them - that is where they still exist.")
         tip("LDoN dungeons all show 15-75 because their adventures SCALE to your level. The zone gives you an adventure matched to you, so any level in that span is valid - it is not a normal narrow range.")
+        -- The flame asserts currency it cannot have. Every level bracket has three possible hot
+        -- zones with one active, and how often the active one changes is genuinely unsettled: the
+        -- 2016 patch note says a random quarterly rotation, a later note on the same page says it
+        -- moves with every patch, and the zone list on that page says it randomizes daily per
+        -- server. Nothing reconciles them, so this text names the capture date and points at Teek,
+        -- which is where the client's own hot zone message points too, rather than stating a
+        -- frequency we cannot stand behind.
+        tip("The flame marks zones that were hot when this data was captured (" .. (zones.hotPoolVerified or "date unknown")
+            .. "). Each level bracket has three possible hot zones and only one is active at a time, so ask Franklin Teek in the Plane of Knowledge for the zone that is live right now. How often it changes is not documented consistently.")
+        tip("Hot zones are Live server data. EMU servers set their own, so on EMU the flame is a guide at best - your server may use a different list, or none.")
         tip("Sort by clicking Zone Name, Level Range or ZEM. Zones with no ZEM for the current server always sort to the bottom.")
     end)
 
@@ -1846,9 +1948,17 @@ local function drawHotZoneTab()
     ImGui.TextWrapped("Each level bracket rotates between three possible hot zones. Orange marks the "
         .. "one confirmed active in game; the others are in the pool but not currently offered.")
     ImGui.Spacing()
-    ImGui.TextDisabled("Verified against Franklin Teek, Plane of Knowledge - "
+    -- PushStyleColor + TextWrapped, NOT TextDisabled: TextDisabled does not wrap, so this line ran
+    -- off the right edge and was cut mid-word. MQ's own binding docs spell out why - TextDisabled is
+    -- a shortcut for PushStyleColor(Text, Colors[TextDisabled]) + Text() + PopStyleColor(), and
+    -- plain Text() never wraps. This is that same decomposition with TextWrapped in place of Text.
+    -- The colour is read from the style rather than using COLOR_DISABLED so it still follows the
+    -- active theme, which is the same reasoning as the expansion line in drawZoneTable.
+    ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyleColorVec4(ImGuiCol.TextDisabled))
+    ImGui.TextWrapped("Verified against Franklin Teek, Plane of Knowledge - "
         .. (zones.hotPoolVerified or "date unknown")
         .. ". He only serves your own bracket and below, so 90+ is unconfirmed.")
+    ImGui.PopStyleColor()
     ImGui.Spacing()
 
     if not zones.hotPool then
@@ -1924,7 +2034,26 @@ local function drawTravelBar(visibleZoneCount)
 
     local wasGroup = groupTravel
     groupTravel = drawToggle("Group Travel:", groupTravel, "groupTravel")
-    if groupTravel ~= wasGroup then SaveTravelSetting() end
+    if groupTravel ~= wasGroup then
+        SaveTravelSetting()
+        -- Turning it ON is the only moment worth saying this, so the check lives on the transition
+        -- and never runs per frame.
+        --
+        -- The two halves of group travel ride on DIFFERENT plugins, which is what makes the silence
+        -- possible. Starting a route is EasyFind's own /travelto group, and EasyFind broadcasts
+        -- "using the configured group plugin" - so it works for whatever the user set up. Pause and
+        -- Stop are ours, over /dgge, which is DanNet's and nothing else's. Without DanNet the route
+        -- starts for the whole group and then only this character can be stopped, with no error
+        -- printed anywhere.
+        --
+        -- Warn, never auto-load. DanNet is a CONDITIONAL dependency here - needed only while this
+        -- toggle is on - so loading it would change the user's MQ setup for a feature they may
+        -- never tick. That is the opposite call from MQ2EasyFind above, which the Go button on
+        -- every row depends on unconditionally.
+        if groupTravel and not mq.TLO.Plugin("MQ2DanNet").IsLoaded() then
+            mq.cmd('/echo HuntBuddy: MQ2DanNet is not loaded - group Pause and Stop will affect only this character. Group travel itself still works.')
+        end
+    end
     hoverTip("Send the whole group. Ignored when you are not in a group.")
 
     -- Pause is inert with no route: /nav pause without one just prints "Navigation must be active
@@ -2086,6 +2215,9 @@ local function main()
     LoadSettings()
     buildClassicLivePairs()
     mq.imgui.init("HuntBuddy", renderUI)
+    -- After init, not before: the window appears immediately, and the travel bar's gate is
+    -- already live, so its "not loaded" line clears itself the moment the plugin lands.
+    ensureEasyFind()
     while openGUI do
         -- Arrival clears the destination, so the mini bar stops offering Pause/Stop for a journey
         -- that is over. Compared against the zone we asked for rather than nav going idle, which

@@ -3,10 +3,10 @@
 -- Original creation date: 03/23/2024
 -- Version controlled by `zones.dataVersion` below (single source of truth - shown in the Help tab).
 --
--- REBUILT FROM SCRATCH. The old hand-curated table is kept beside this one as zones2.lua, reference
--- only, not loaded. An audit found 240 of its 563 rows flagged hotzone against ~50 real ones, level
--- ranges contradicting the game (Velketor's Labyrinth 90-110 against an actual 45-55), and 79
--- invented zone ids. Nothing is copied from it.
+-- REBUILT FROM SCRATCH, replacing a hand-curated table an audit found badly wrong: 240 of its 563
+-- rows were flagged hotzone against ~50 real ones, level ranges contradicted the game (Velketor's
+-- Labyrinth 90-110 against an actual 45-55), and 79 zone ids were invented outright. Nothing is
+-- carried over from it - every value below is sourced, as the next block sets out.
 --
 -- WHERE EACH FIELD COMES FROM - every value here is sourced, none are guessed
 --   short / name / expansion  MacroQuest's own resources/Zones.ini. Canonical and matched to the
